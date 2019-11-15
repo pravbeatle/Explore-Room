@@ -6,8 +6,33 @@ import numpy as np
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 import actionlib
 from actionlib_msgs.msg import *
-from geometry_msgs.msg import Point, Pose, Quaternion
+from geometry_msgs.msg import Point, Pose, Quaternion, Twist
 
+from smach import State, StateMachine
+from time import sleep
+
+############################## STATE MACHINE ####################################
+
+class Start(State):
+	def __init__(self, bot):
+		State.__init__(self, outcomes=['scan'])
+
+	
+	def execute(self, data):
+		return 'scan'
+		
+		
+class CScan(State):
+	def __init__(self, bot):
+		State.__init__(self, outcomes=['green_found'])
+	
+	
+	def execute(self, data):
+		
+		
+		return 'success'
+
+###################################################################################
 
 class TurtleBot:
 	def __init__(self):
@@ -20,6 +45,19 @@ class TurtleBot:
 		rospy.loginfo("Wait until the action server comes up")
 		
 		self.move_base.wait_for_server(rospy.Duration(5))
+		
+		
+	def move(self, linear=(0,0,0), angular=(0,0,0)):
+		
+		self.velocity.linear.x = linear[0] 	# Forward or Backward with in m/sec.
+		self.velocity.linear.y = linear[1]
+		self.velocity.linear.z = linear[2]
+			
+		self.velocity.angular.x = angular[0]
+		self.velocity.angular.y = angular[1]
+		self.velocity.angular.z = angular[2] 	# Anti-clockwise/clockwise in radians per sec
+			
+		self.velocity_publisher.publish(self.velocity)
 		
 	
 	def go_to(self, pose, quat):
@@ -60,7 +98,15 @@ class TurtleBot:
 if __name__ == '__main__':
 	try: 
 		rospy.init_node('Explorer', anonymous=True)
-		navigator = TurtleBot()
+		bot = TurtleBot()
+		
+		sm = StateMachine(outcomes=['success'])
+		with sm:
+			StateMachine.add('START', Drive(bot)), transitions={'success': 'TWO'})
+			StateMachine.add('CSCAN', Turn(bot), transitions={'success': 'ONE'})
+		
+		sm.execute()
+		
 		
 		x = -2.3
 		y = 5.63
@@ -69,7 +115,7 @@ if __name__ == '__main__':
 		position = {'x': x, 'y': y, 'z': 0.0}
 		quaternion = {'r1': 0.000, 'r2': 0.000, 'r3': np.sin(theta/2.0), 'r4': np.cos(theta/2.0)}
 		
-		success = navigator.go_to(position, quaternion)
+		#success = navigator.go_to(position, quaternion)
 		
 		if success: 
 			rospy.loginfo('reached goal')
