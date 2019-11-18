@@ -13,6 +13,7 @@ from std_msgs.msg import String
 from time import sleep
 from rospy_message_converter import message_converter
 import json
+import math
 
 ############################## STATE MACHINE ####################################
 
@@ -31,14 +32,35 @@ class CScan(State):
 		
 		if data['circle_found']:
 			self.color_found = True
+	
+	
+	def color_or_scan_done(self, rad):
+		
+		if rad >= 2*math.pi or self.color_found:
+			return True
+		
+		return False
 
 
 	def execute(self, data):
 
-		while not rospy.is_shutdown() and not self.color_found:
-			bot.move(angular=(0,0,0.18))
+		# EDIT REQUIRED :- change code to only do one 360deg scan
+		radians_done = 0
+		
+		while not rospy.is_shutdown() and not self.color_or_scan_done(radians_done):
+			bot.move(angular=(0,0, math.pi/18))
+	
 	
 		return 'green_found'
+
+
+class Focus(State):
+	def __init__(self, bot):
+		State.__init__(self, outcomes=['focus_done'])
+	
+	def execute(self, data):
+		
+		return 'focus_done'
 
 ###################################################################################
 
@@ -118,8 +140,8 @@ if __name__ == '__main__':
 		
 		sm = StateMachine(outcomes=['green_found', 'nothing_found', 'focus_on_color','focus_done', 'nav_done', 'scan_done', 'poster_done', 'success'])
 		with sm:
-			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'success', 'nothing_found': 'CSCAN'})
-			#~ StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
+			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
+			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'success'})
 			#~ StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'ROOM_SCAN'})
 			#~ StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'scan_done': 'FOCUS_ON_POSTER'})
 			#~ StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'poster_done': 'success'})
@@ -141,7 +163,7 @@ if __name__ == '__main__':
 			#else:
 			#	rospy.loginfo('failed to reach the desired goal')
 			
-			rospy.spin()
+			#~ rospy.spin()
 	
 
 	except rospy.ROSInterruptException:

@@ -39,8 +39,8 @@ class colourIdentifier():
 	
 	def extract_colors(self, cv_image):
 		# Set the upper and lower bounds for the two colours you wish to identify
-		hsv_green_lower = np.array([60 - self.color_sensitivity, 100, 100])
-		hsv_green_upper = np.array([60 + self.color_sensitivity, 255, 120])
+		hsv_green_lower = np.array([40, 100, 0])
+		hsv_green_upper = np.array([80, 255, 100])
 		# Red has lower and upper bounds split on eithr side
 		hsv_red_lower = np.array([0, 100, 100])
 		hsv_red_upper = np.array([self.color_sensitivity, 255, 120])
@@ -112,7 +112,7 @@ class colourIdentifier():
 	
 	def find_colors(self, red_mask, green_mask):
 		# find contours for red
-		self.find_contours('Red', red_mask)
+		#~ self.find_contours('Red', red_mask)
 		self.find_contours('Green', green_mask)
 		
 		
