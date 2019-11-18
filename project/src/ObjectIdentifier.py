@@ -69,17 +69,19 @@ class colourIdentifier():
 		circles = cv.HoughCircles(image, cv.cv.CV_HOUGH_GRADIENT, 1, 20,
 		                           param1=5, param2=5, minRadius=5, maxRadius=50)
 		
-		if circles is not None: 
-			circles = np.uint8(np.around(circles))
+		if circles is not None:
+			return True 
+			#~ circles = np.uint8(np.around(circles))
 			
-			for i in circles[0,:]:
-			    # draw the outer circle
-			    cv.circle(image,(i[0],i[1]),i[2],(0,255,0),2)
-			    # draw the center of the circle
-			    cv.circle(image,(i[0],i[1]),2,(0,0,255),3)
+			#~ for i in circles[0,:]:
+			    #~ # draw the outer circle
+			    #~ cv.circle(image,(i[0],i[1]),i[2],(0,255,0),2)
+			    #~ # draw the center of the circle
+			    #~ cv.circle(image,(i[0],i[1]),2,(0,0,255),3)
 			
-			cv.imshow('detected circles', image)
-			cv.waitKey(3)
+			#~ cv.imshow('detected circles', image)
+			#~ cv.waitKey(3)
+		return False 
 					
 				
 	def find_contours(self, color_key, color_mask):
@@ -90,15 +92,14 @@ class colourIdentifier():
 			((x,y), radius) = cv.minEnclosingCircle(c)
 			cx, cy = self.find_centroid(contours)
 			diff = self.find_diff(cx)
-			self.find_circles()
 			
-			object_message = [
-								{
-									'object_color': color_key,
-									'radius':       radius,
-									'angle_from_centroid': diff
-								}
-							 ]
+			object_message = {
+								'object_color': color_key,
+								'radius':       radius,
+								'angle_from_centroid': diff,
+								'circle_found': self.find_circles()
+							}
+							 
 			object_message = json.dumps(object_message)
 			self.object_publisher.publish(object_message)
 			rospy.loginfo(object_message)
@@ -107,7 +108,7 @@ class colourIdentifier():
 				center = (int(x), int(y))
 				# draw a circle on the contour you're identifying
 				cv.circle(self.image, center, int(radius), (255, 255, 255), 1)		
-	
+		
 	
 	def find_colors(self, red_mask, green_mask):
 		# find contours for red
