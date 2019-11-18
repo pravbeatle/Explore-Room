@@ -34,7 +34,7 @@ class colourIdentifier():
 		self.rate = rospy.Rate(10) 		#10hz
 		
 		# publish and subcribe to relevant topics
-		self.object_publisher = rospy.Publisher('object_detection/json', String, queue_size=10)
+		self.object_publisher = rospy.Publisher('object_detection/color/json', String, queue_size=10)
 				
 	
 	def extract_colors(self, cv_image):
@@ -58,7 +58,29 @@ class colourIdentifier():
 		self.image = cv.bitwise_and(cv_image, cv_image, mask=combined_masks)
 		
 		return red_mask, green_mask
-				
+		
+		
+	def find_circles(self):
+		
+		(_, _, image) = cv.split(self.image)
+		
+		image = cv.medianBlur(image,5)
+		
+		circles = cv.HoughCircles(image, cv.cv.CV_HOUGH_GRADIENT, 1, 20,
+		                           param1=5, param2=5, minRadius=5, maxRadius=50)
+		
+		if circles is not None: 
+			circles = np.uint8(np.around(circles))
+			
+			for i in circles[0,:]:
+			    # draw the outer circle
+			    cv.circle(image,(i[0],i[1]),i[2],(0,255,0),2)
+			    # draw the center of the circle
+			    cv.circle(image,(i[0],i[1]),2,(0,0,255),3)
+			
+			cv.imshow('detected circles', image)
+			cv.waitKey(3)
+					
 				
 	def find_contours(self, color_key, color_mask):
 		contours, _ = cv.findContours(color_mask, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
@@ -68,6 +90,7 @@ class colourIdentifier():
 			((x,y), radius) = cv.minEnclosingCircle(c)
 			cx, cy = self.find_centroid(contours)
 			diff = self.find_diff(cx)
+			self.find_circles()
 			
 			object_message = [
 								{
@@ -81,7 +104,6 @@ class colourIdentifier():
 			rospy.loginfo(object_message)
 			
 			if radius > 5:
-				print(color_key)
 				center = (int(x), int(y))
 				# draw a circle on the contour you're identifying
 				cv.circle(self.image, center, int(radius), (255, 255, 255), 1)		
@@ -98,8 +120,11 @@ class colourIdentifier():
 		c = max(contours, key=cv.contourArea)
 		
 		M = cv.moments(c)
-		# x and y coordinates of the centroid of the image blob
-		cx, cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
+		if M['m00'] == 0:
+			cx, cy = 0, 0
+		else:
+			# x and y coordinates of the centroid of the image blob
+			cx, cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
 		
 		return cx, cy
 		
@@ -107,7 +132,7 @@ class colourIdentifier():
 	def find_diff(self, cx):
 		height, width, depth = self.image.shape
 		
-		return -float((cx - (width/2))/100)
+		return float((cx - (width/2))/100)
 
 	
 	def image_callback(self, data):
