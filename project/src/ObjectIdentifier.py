@@ -93,21 +93,22 @@ class colourIdentifier():
 			cx, cy = self.find_centroid(contours)
 			diff = self.find_diff(cx)
 			
-			object_message = {
+			if radius > 5:
+				center = (int(x), int(y))
+				
+				object_message = {
 								'object_color': color_key,
 								'radius':       radius,
 								'angle_from_centroid': diff,
 								'circle_found': self.find_circles()
 							}
 							 
-			object_message = json.dumps(object_message)
-			self.object_publisher.publish(object_message)
-			rospy.loginfo(object_message)
+				object_message = json.dumps(object_message)
+				self.object_publisher.publish(object_message)
+				rospy.loginfo(object_message)
 			
-			if radius > 5:
-				center = (int(x), int(y))
-				# draw a circle on the contour you're identifying
-				cv.circle(self.image, center, int(radius), (255, 255, 255), 1)		
+				#~ # draw a circle on the contour you're identifying
+				#~ cv.circle(self.image, center, int(radius), (255, 255, 255), 1)		
 		
 	
 	def find_colors(self, red_mask, green_mask):

@@ -9,9 +9,12 @@ from actionlib_msgs.msg import *
 from geometry_msgs.msg import Point, Pose, Quaternion, Twist
 
 from smach import State, StateMachine
+from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from time import sleep
 from rospy_message_converter import message_converter
+from cv_bridge import CvBridge, CvBridgeError
+import cv2 as cv
 import json
 import math
 
@@ -42,7 +45,7 @@ class CScan(State):
 		return False
 
 
-	def execute(self, data):
+	def execute(self, userdata):
 
 		# EDIT REQUIRED :- change code to only do one 360deg scan
 		radians_done = 0
@@ -57,9 +60,37 @@ class CScan(State):
 class Focus(State):
 	def __init__(self, bot):
 		State.__init__(self, outcomes=['focus_done'])
-	
-	def execute(self, data):
+		self.object_subscriber = rospy.Subscriber('object_detection/color/json', String, self.process_json, queue_size=1)
+		self.camera_subscriber = rospy.Subscriber('camera/rgb/image_raw', Image, self.image_callback, queue_size=1)
+		self.cv_bridge = CvBridge()
 		
+	
+	def image_callback(self, data):
+		try:
+			self.object_image = self.cv_bridge.imgmsg_to_cv2(data, "bgr8") 
+		except CvBridgeError as e:
+			print(e)
+	
+	
+	def process_json(self, data):
+		data = message_converter.convert_ros_message_to_dictionary(data)['data']
+		data = json.loads(data)
+		
+		self.object_radius = data['radius']
+		self.object_diff = data['angle_from_centroid']
+		
+	
+	def execute(self, userdata):
+		
+		while self.object_radius <= 30:
+			# turn towards the goal
+			angular = (0,0,-self.object_diff) 
+			# Too far away from object, need to move forwards
+			linear = (0.2,0,0)
+			bot.move(linear, angular)
+		
+		cv.imwrite('./project/image_capture/green_circle.png', self.object_image)
+			
 		return 'focus_done'
 
 ###################################################################################
@@ -138,7 +169,7 @@ if __name__ == '__main__':
 		rospy.init_node('Explorer', anonymous=True)
 		bot = TurtleBot()
 		
-		sm = StateMachine(outcomes=['green_found', 'nothing_found', 'focus_on_color','focus_done', 'nav_done', 'scan_done', 'poster_done', 'success'])
+		sm = StateMachine(outcomes=['success'])  # the end states of the machine
 		with sm:
 			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
 			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'success'})
