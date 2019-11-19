@@ -246,27 +246,9 @@ if __name__ == '__main__':
 			#~ StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'poster_done': 'success'})
 			
 			sm.execute()
-			
-			
-			x = -2.3
-			y = 5.63
-			theta = 0.1
-			
-			#success = navigator.go_to(position, quaternion)
-			
-			#if success: 
-			#	rospy.loginfo('reached goal')
-			#else:
-			#	rospy.loginfo('failed to reach the desired goal')
-			
-			#~ rospy.spin()
 	
 
 	except rospy.ROSInterruptException:
 		rospy.loginfo('Quitting...')
-
-
-
-
 
 

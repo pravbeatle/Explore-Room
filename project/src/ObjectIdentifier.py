@@ -23,7 +23,6 @@ class colourIdentifier():
 		
 		self.image = None	# the image that we continuisly process on top of
 
-
 		# Remember to initialise a CvBridge() and set up a subscriber to the image topic you wish to use
 		self.cv_bridge = CvBridge()
 		
@@ -60,28 +59,40 @@ class colourIdentifier():
 		return red_mask, green_mask
 		
 		
+	def convert_hsv_to_gray(self):
+		gray = cv.cvtColor(self.image, cv.COLOR_HSV2BGR)
+		gray = cv.cvtColor(gray, cv.COLOR_BGR2GRAY)
+		
+		return gray
+		
+		
 	def find_circles(self):
 		
-		(_, _, image) = cv.split(self.image)
+		image = self.convert_hsv_to_gray()
 		
 		image = cv.medianBlur(image,5)
 		
 		circles = cv.HoughCircles(image, cv.cv.CV_HOUGH_GRADIENT, 1, 20,
-		                           param1=5, param2=5, minRadius=5, maxRadius=50)
+		                           param1=20, param2=10, minRadius=5, maxRadius=50)
+		
+		cv.imshow('before circles', self.image)
+		cv.waitKey(3)
 		
 		if circles is not None:
+			circles = np.uint8(np.around(circles))
+			
+			for i in circles[0,:]:
+			    # draw the outer circle
+			    cv.circle(image,(i[0],i[1]),i[2],(0,255,0),2)
+			    # draw the center of the circle
+			    cv.circle(image,(i[0],i[1]),2,(0,0,255),3)
+			
+			cv.imshow('detected circles', image)
+			cv.waitKey(3)
+			
 			return True 
-			#~ circles = np.uint8(np.around(circles))
-			
-			#~ for i in circles[0,:]:
-			    #~ # draw the outer circle
-			    #~ cv.circle(image,(i[0],i[1]),i[2],(0,255,0),2)
-			    #~ # draw the center of the circle
-			    #~ cv.circle(image,(i[0],i[1]),2,(0,0,255),3)
-			
-			#~ cv.imshow('detected circles', image)
-			#~ cv.waitKey(3)
-		return False 
+		else:
+			return False 
 					
 				
 	def find_contours(self, color_key, color_mask):
@@ -96,6 +107,9 @@ class colourIdentifier():
 			if radius > 5:
 				center = (int(x), int(y))
 				
+				#~ # draw a circle on the contour you're identifying
+				#~ cv.circle(self.image, center, int(radius), (255, 255, 255), 1)
+				
 				object_message = {
 								'object_color': color_key,
 								'radius':       radius,
@@ -105,10 +119,7 @@ class colourIdentifier():
 							 
 				object_message = json.dumps(object_message)
 				self.object_publisher.publish(object_message)
-				rospy.loginfo(object_message)
-			
-				#~ # draw a circle on the contour you're identifying
-				#~ cv.circle(self.image, center, int(radius), (255, 255, 255), 1)		
+				rospy.loginfo(object_message)		
 		
 	
 	def find_colors(self, red_mask, green_mask):
