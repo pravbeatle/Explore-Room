@@ -58,17 +58,11 @@ class colourIdentifier():
 		
 		return red_mask, green_mask
 		
-		
-	def convert_hsv_to_gray(self):
-		gray = cv.cvtColor(self.image, cv.COLOR_HSV2BGR)
-		gray = cv.cvtColor(gray, cv.COLOR_BGR2GRAY)
-		
-		return gray
-		
+				
 		
 	def find_circles(self):
 		
-		image = self.convert_hsv_to_gray()
+		image = cv.cvtColor(self.image, cv.COLOR_BGR2GRAY)
 		
 		image = cv.medianBlur(image,5)
 		
