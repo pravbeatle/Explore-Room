@@ -8,14 +8,19 @@ import actionlib
 from actionlib_msgs.msg import *
 from geometry_msgs.msg import Point, Pose, Quaternion, Twist
 
+import tf
+
 from smach import State, StateMachine
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
+from nav_msgs.msg import Odometry
 from time import sleep
 from rospy_message_converter import message_converter
 from cv_bridge import CvBridge, CvBridgeError
 import cv2 as cv
 import json
+import yaml
+import os
 import math
 
 ############################## STATE MACHINE ####################################
@@ -66,6 +71,7 @@ class Focus(State):
 		
 	
 	def image_callback(self, data):
+		# EDIT REQUIRED :- handle this in the ObjIdentifier node
 		try:
 			self.object_image = self.cv_bridge.imgmsg_to_cv2(data, "bgr8") 
 		except CvBridgeError as e:
@@ -92,6 +98,58 @@ class Focus(State):
 		cv.imwrite('./project/image_capture/green_circle.png', self.object_image)
 			
 		return 'focus_done'
+		
+
+
+class NavRoom(State):
+	def __init__(self, bot):
+		State.__init__(self, outcomes=['nav_done'])
+		#~ self.odom_subscriber = rospy.Subscriber('/odom', Odometry, self.odom_callback)
+		self.tf_listener = tf.TransformListener()
+	
+	
+	#~ def odom_callback(self, data):
+		#~ self.position = data.pose.pose.position
+		#~ self.orientation = data.pose.pose.orientation
+	
+	
+	def create_pose_quat(self, x, y):
+		pos = { 'x': x, 'y': y, 'z': self.position[2] }
+		quat = { 'r1': self.orientation[0], 'r2': self.orientation[1], 'r3': self.orientation[2], 'r4': self.orientation[3] }
+		
+		return pos, quat
+		
+	
+	def dist(self, x, y):
+		
+		return math.sqrt((x - self.position[0])**2 + (y - self.position[1])**2)
+	
+	
+	def execute(self, userdata):
+		
+		distances = []
+		
+		print(self.tf_listener.lookupTransform('/odom', '/map', rospy.Time(0)))
+		(self.position, self.orientation) = self.tf_listener.lookupTransform('/odom', '/map', rospy.Time(0))
+		
+		for room in bot.rooms:
+			distances.append( self.dist(room['center_x'], room['center_y']) )
+		
+		closest_room_index = distances.index(min(distances))
+		closest_room = bot.rooms[closest_room_index]
+		
+		# go to enterance center
+		print(closest_room)
+		pos, quat = self.create_pose_quat(closest_room['enterance_x'], closest_room['enterance_y'])
+		bot.go_to(pos, quat)
+		
+		# go to room center
+		pos, quat = self.create_pose_quat(closest_room['center_x'], closest_room['center_y'])
+		bot.go_to(pos, quat)
+		
+		return 'nav_done'
+		
+		
 
 ###################################################################################
 
@@ -114,6 +172,16 @@ class TurtleBot:
 		rospy.loginfo("Wait until the action server comes up")
 		
 		self.move_base.wait_for_server(rospy.Duration(5))
+		
+		with open('./src/group27/project/example/input_points.yaml', 'r') as stream:
+			try:
+				pts = yaml.safe_load(stream)
+				self.rooms = [
+					{'center_x': pts['room1_centre_xy'][0], 'center_y': pts['room1_centre_xy'][1], 'enterance_x': pts['room1_entrance_xy'][0], 'enterance_y': pts['room1_entrance_xy'][1]},
+					{'center_x': pts['room2_centre_xy'][0], 'center_y': pts['room2_centre_xy'][1], 'enterance_x': pts['room2_entrance_xy'][0], 'enterance_y': pts['room2_entrance_xy'][1]}
+				]
+			except yaml.YAMLError as e:
+				print(e)
 		
 	
 	def move(self, linear=(0,0,0), angular=(0,0,0)):
@@ -172,8 +240,8 @@ if __name__ == '__main__':
 		sm = StateMachine(outcomes=['success'])  # the end states of the machine
 		with sm:
 			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
-			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'success'})
-			#~ StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'ROOM_SCAN'})
+			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
+			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'success'})
 			#~ StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'scan_done': 'FOCUS_ON_POSTER'})
 			#~ StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'poster_done': 'success'})
 			
@@ -183,9 +251,6 @@ if __name__ == '__main__':
 			x = -2.3
 			y = 5.63
 			theta = 0.1
-			
-			position = {'x': x, 'y': y, 'z': 0.0}
-			quaternion = {'r1': 0.000, 'r2': 0.000, 'r3': np.sin(theta/2.0), 'r4': np.cos(theta/2.0)}
 			
 			#success = navigator.go_to(position, quaternion)
 			
