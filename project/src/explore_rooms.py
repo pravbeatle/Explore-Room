@@ -11,16 +11,12 @@ from geometry_msgs.msg import Point, Pose, Quaternion, Twist
 import tf
 
 from smach import State, StateMachine
-from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from nav_msgs.msg import Odometry
 from time import sleep
 from rospy_message_converter import message_converter
-from cv_bridge import CvBridge, CvBridgeError
-import cv2 as cv
 import json
 import yaml
-import os
 import math
 
 ############################## STATE MACHINE ####################################
@@ -66,16 +62,6 @@ class Focus(State):
 	def __init__(self, bot):
 		State.__init__(self, outcomes=['focus_done'])
 		self.object_subscriber = rospy.Subscriber('object_detection/color/json', String, self.process_json, queue_size=1)
-		self.camera_subscriber = rospy.Subscriber('camera/rgb/image_raw', Image, self.image_callback, queue_size=1)
-		self.cv_bridge = CvBridge()
-		
-	
-	def image_callback(self, data):
-		# EDIT REQUIRED :- handle this in the ObjIdentifier node
-		try:
-			self.object_image = self.cv_bridge.imgmsg_to_cv2(data, "bgr8") 
-		except CvBridgeError as e:
-			print(e)
 	
 	
 	def process_json(self, data):
@@ -95,8 +81,12 @@ class Focus(State):
 			linear = (0.2,0,0)
 			bot.move(linear, angular)
 		
-		cv.imwrite('./project/image_capture/green_circle.png', self.object_image)
-			
+		status_message = {
+							'status': 'focus_done',
+							'file_path': './project/image_capture/green_circle.jpg'
+		}
+		bot.status_publisher.publish(status_message)
+					
 		return 'focus_done'
 		
 
@@ -167,6 +157,8 @@ class TurtleBot:
 		
 		# publish and subcribe to relevant topics
 		self.velocity_publisher = rospy.Publisher('mobile_base/commands/velocity', Twist, queue_size=10)
+		
+		self.status_publsher = rospy.Publisher('explorer_bot/status', String, queue_size=1)
 		
 		self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
 		rospy.loginfo("Wait until the action server comes up")

@@ -6,11 +6,13 @@ import cv2 as cv
 import numpy as np
 import rospy
 import sys
-import json
 
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from cv_bridge import CvBridge, CvBridgeError
+from rospy_message_converter import message_converter
+import json
+
 
 class colourIdentifier():
 
@@ -22,6 +24,7 @@ class colourIdentifier():
 		self.color_sensitivity = 10
 		
 		self.image = None	# the image that we continuisly process on top of
+		self.cv_image = None
 
 		# Remember to initialise a CvBridge() and set up a subscriber to the image topic you wish to use
 		self.cv_bridge = CvBridge()
@@ -34,6 +37,8 @@ class colourIdentifier():
 		
 		# publish and subcribe to relevant topics
 		self.object_publisher = rospy.Publisher('object_detection/color/json', String, queue_size=10)
+		
+		self.status_subscriber = rospy.Subscriber('explorer_bot/status', String, self.status_callback, queue_size=1)
 				
 	
 	def extract_colors(self, cv_image):
@@ -140,7 +145,14 @@ class colourIdentifier():
 		height, width, depth = self.image.shape
 		
 		return float((cx - (width/2))/100)
-
+		
+	
+	def status_callback(self, data):
+		data = message_converter.convert_ros_message_to_dictionary(data)['data']
+		data = json.loads(data)
+		
+		print()
+		
 	
 	def image_callback(self, data):
 		# Convert the received image into a opencv image
@@ -149,6 +161,7 @@ class colourIdentifier():
 			
 			# Convert the rgb image into a hsv image
 			cv_image = self.cv_bridge.imgmsg_to_cv2(data, "bgr8")
+			self.cv_image = cv.cvtColor(cv_image, cv.COLOR_BGR2RGB)
 			
 			red_mask, green_mask = self.extract_colors(cv_image)
 	
