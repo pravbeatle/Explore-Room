@@ -25,6 +25,8 @@ class colourIdentifier():
 		
 		self.image = None	# the image that we continuisly process on top of
 		self.cv_image = None
+		
+		self.bot_status = 'focus_done'
 
 		# Remember to initialise a CvBridge() and set up a subscriber to the image topic you wish to use
 		self.cv_bridge = CvBridge()
@@ -36,7 +38,8 @@ class colourIdentifier():
 		self.rate = rospy.Rate(10) 		#10hz
 		
 		# publish and subcribe to relevant topics
-		self.object_publisher = rospy.Publisher('object_detection/color/json', String, queue_size=10)
+		self.object_color_publisher = rospy.Publisher('object_detection/color/json', String, queue_size=10)
+		self.object_publisher = rospy.Publisher('object_detection/object/json', String, queue_size=10)
 		
 		self.status_subscriber = rospy.Subscriber('explorer_bot/status', String, self.status_callback, queue_size=1)
 				
@@ -73,9 +76,7 @@ class colourIdentifier():
 		
 		circles = cv.HoughCircles(image, cv.cv.CV_HOUGH_GRADIENT, 1, 20,
 		                           param1=20, param2=10, minRadius=5, maxRadius=50)
-		
-		cv.imshow('before circles', self.image)
-		cv.waitKey(3)
+		                           
 		
 		if circles is not None:
 			circles = np.uint8(np.around(circles))
@@ -85,9 +86,6 @@ class colourIdentifier():
 			    cv.circle(image,(i[0],i[1]),i[2],(0,255,0),2)
 			    # draw the center of the circle
 			    cv.circle(image,(i[0],i[1]),2,(0,0,255),3)
-			
-			cv.imshow('detected circles', image)
-			cv.waitKey(3)
 			
 			return True 
 		else:
@@ -117,8 +115,7 @@ class colourIdentifier():
 							}
 							 
 				object_message = json.dumps(object_message)
-				self.object_publisher.publish(object_message)
-				rospy.loginfo(object_message)		
+				self.object_color_publisher.publish(object_message)
 		
 	
 	def find_colors(self, red_mask, green_mask):
@@ -151,7 +148,33 @@ class colourIdentifier():
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
-		print()
+		
+		if data['status'] == 'focus_done':
+			cv.imwrite(data['file_path'], self.cv_image)
+			self.bot_status = 'focus_done'
+	
+	
+	def find_posters(self):
+		gray = cv.cvtColor(self.cv_image, cv.COLOR_RGB2GRAY)
+		gray = cv.blur(gray, (7,7))
+		
+		edges = cv.Canny(gray, 100, 200)
+		
+		_, thresh = cv.threshold(edges, 150, 255, cv.THRESH_BINARY)
+		self.image = thresh
+		
+		contours, _ = cv.findContours(thresh, 1, 2)
+		
+		if len(contours):
+			
+			c = max(contours, key=cv.contourArea)
+			
+			cv.drawContours(self.cv_image, [c], -1, (0, 255, 0), 2)
+		
+			approx = cv.approxPolyDP(c, 0.01*cv.arcLength(c, True), True)
+			
+			if len(approx) == 4:
+				print('FOUND A RECTANGLE!!')
 		
 	
 	def image_callback(self, data):
@@ -163,12 +186,18 @@ class colourIdentifier():
 			cv_image = self.cv_bridge.imgmsg_to_cv2(data, "bgr8")
 			self.cv_image = cv.cvtColor(cv_image, cv.COLOR_BGR2RGB)
 			
-			red_mask, green_mask = self.extract_colors(cv_image)
-	
-			# Find the contours that appear within the certain colours mask using the cv2.findContours() method
-			# For <mode> use cv2.RETR_LIST for <method> use cv2.CHAIN_APPROX_SIMPLE
-			#ret, thresh = cv.threshold(green_mask, 40, 255, 0)
-			self.find_colors(red_mask, green_mask)
+			if self.bot_status == '':
+				red_mask, green_mask = self.extract_colors(cv_image)
+		
+				# Find the contours that appear within the certain colours mask using the cv2.findContours() method
+				# For <mode> use cv2.RETR_LIST for <method> use cv2.CHAIN_APPROX_SIMPLE
+				#ret, thresh = cv.threshold(green_mask, 40, 255, 0)
+				self.find_colors(red_mask, green_mask)
+				
+			elif self.bot_status == 'focus_done':
+				
+				self.find_posters()
+				
 									
 			# Be sure to do this for the other colour as well
 		except CvBridgeError as e:

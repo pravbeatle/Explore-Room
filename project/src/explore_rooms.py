@@ -27,6 +27,7 @@ class CScan(State):
 		State.__init__(self, outcomes=['green_found', 'nothing_found'])
 		self.object_subscriber = rospy.Subscriber('object_detection/color/json', String, self.process_json, queue_size=1)
 
+
 		self.color_found = False
 
 
@@ -34,7 +35,7 @@ class CScan(State):
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
-		if data['circle_found']:
+		if data['circle_found'] and data['object_color'] == 'Green':
 			self.color_found = True
 	
 	
@@ -62,6 +63,8 @@ class Focus(State):
 	def __init__(self, bot):
 		State.__init__(self, outcomes=['focus_done'])
 		self.object_subscriber = rospy.Subscriber('object_detection/color/json', String, self.process_json, queue_size=1)
+		self.closest_radius = 30
+
 	
 	
 	def process_json(self, data):
@@ -72,20 +75,25 @@ class Focus(State):
 		self.object_diff = data['angle_from_centroid']
 		
 	
+	def send_bot_status(self):
+		status_message = {
+							'status': 'focus_done',
+							'file_path': './project/image_capture/green_circle.jpg'
+		}
+		status_message = json.dumps(status_message)
+		bot.status_publisher.publish(status_message)
+		
+	
 	def execute(self, userdata):
 		
-		while self.object_radius <= 30:
+		while self.object_radius <= self.closest_radius:
 			# turn towards the goal
 			angular = (0,0,-self.object_diff) 
 			# Too far away from object, need to move forwards
 			linear = (0.2,0,0)
 			bot.move(linear, angular)
 		
-		status_message = {
-							'status': 'focus_done',
-							'file_path': './project/image_capture/green_circle.jpg'
-		}
-		bot.status_publisher.publish(status_message)
+		self.send_bot_status()
 					
 		return 'focus_done'
 		
@@ -113,14 +121,10 @@ class NavRoom(State):
 	def dist(self, x, y):
 		
 		return math.sqrt((x - self.position[0])**2 + (y - self.position[1])**2)
-	
-	
-	def execute(self, userdata):
 		
+	
+	def calculate_closest_room(self):
 		distances = []
-		
-		print(self.tf_listener.lookupTransform('/odom', '/map', rospy.Time(0)))
-		(self.position, self.orientation) = self.tf_listener.lookupTransform('/odom', '/map', rospy.Time(0))
 		
 		for room in bot.rooms:
 			distances.append( self.dist(room['center_x'], room['center_y']) )
@@ -128,8 +132,11 @@ class NavRoom(State):
 		closest_room_index = distances.index(min(distances))
 		closest_room = bot.rooms[closest_room_index]
 		
+		return closest_room
+	
+	
+	def send_nav_goals(self, closest_room):
 		# go to enterance center
-		print(closest_room)
 		pos, quat = self.create_pose_quat(closest_room['enterance_x'], closest_room['enterance_y'])
 		bot.go_to(pos, quat)
 		
@@ -137,7 +144,37 @@ class NavRoom(State):
 		pos, quat = self.create_pose_quat(closest_room['center_x'], closest_room['center_y'])
 		bot.go_to(pos, quat)
 		
+	
+	
+	def execute(self, userdata):
+				
+		(self.position, self.orientation) = self.tf_listener.lookupTransform('/odom', '/map', rospy.Time(0))
+		
+		closest_room = self.calculate_closest_room()
+		
+		self.send_nav_goals(closest_room)
+		
 		return 'nav_done'
+		
+
+
+class RoomScan(State):
+	def __init__(self, bot):
+		State.__init__(self, outcomes=['scan_done'])
+		self.object_subscriber = rospy.Subscriber('object_detection/object/json', String, self.process_json, queue_size=1)
+		
+	
+	def process_json(self, data):
+		data = message_converter.convert_ros_message_to_dictionary(data)['data']
+		data = json.loads(data)
+		
+	
+	def execute(self, userdata):
+		
+		while not rospy.is_shutdown():
+			bot.move(angular=(0,0, math.pi/18))
+		
+		return 'scan_done'
 		
 		
 
@@ -158,7 +195,7 @@ class TurtleBot:
 		# publish and subcribe to relevant topics
 		self.velocity_publisher = rospy.Publisher('mobile_base/commands/velocity', Twist, queue_size=10)
 		
-		self.status_publsher = rospy.Publisher('explorer_bot/status', String, queue_size=1)
+		self.status_publisher = rospy.Publisher('explorer_bot/status', String, queue_size=1)
 		
 		self.move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
 		rospy.loginfo("Wait until the action server comes up")
@@ -233,8 +270,8 @@ if __name__ == '__main__':
 		with sm:
 			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
 			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
-			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'success'})
-			#~ StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'scan_done': 'FOCUS_ON_POSTER'})
+			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'ROOM_SCAN'})
+			StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'scan_done': 'success'})
 			#~ StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'poster_done': 'success'})
 			
 			sm.execute()
