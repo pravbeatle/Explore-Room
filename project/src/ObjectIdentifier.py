@@ -26,7 +26,7 @@ class colourIdentifier():
 		self.image = None	# the image that we continuisly process on top of
 		self.cv_image = None
 		
-		self.bot_status = 'focus_done'
+		self.bot_status = 'room_scan'
 
 		# Remember to initialise a CvBridge() and set up a subscriber to the image topic you wish to use
 		self.cv_bridge = CvBridge()
@@ -148,19 +148,84 @@ class colourIdentifier():
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
-		
 		if data['status'] == 'focus_done':
 			cv.imwrite(data['file_path'], self.cv_image)
-			self.bot_status = 'focus_done'
+		
+		self.bot_status = data['status']
+			
+	
+	def faces_found(self, gray):
+		
+		face_cascade = cv.CascadeClassifier('./src/group27/project/src/haarcascade_frontalface_default.xml')
+		faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+		
+		for (x,y,w,h) in faces:
+		
+			cv.rectangle(self.cv_image,(x,y),(x+w,y+h),(255,0,0),2)
+				
+		return True if (len(faces) > 0) else False
+		
+		
+	def extract_poster_colors(self):
+		# Set the upper and lower bounds for the two colours you wish to identify
+		hsv_yellow_lower = np.array([25 - 10, 50, 50])
+		hsv_yellow_upper = np.array([25 + 10, 255, 255])
+		# Red has lower and upper bounds split on eithr side
+		hsv_red_lower = np.array([0, 100, 100])
+		hsv_red_upper = np.array([10, 255, 255])
+		
+		hsv_blue_lower = np.array([120 - 10, 100, 100])
+		hsv_blue_upper = np.array([120 + 10, 255, 255])
+		
+		hsv_purple_lower = np.array([120 - 10, 200, 100])
+		hsv_purple_upper = np.array([120 + 10, 255, 150])
+		
+		hsv_image = cv.cvtColor(self.cv_image, cv.COLOR_BGR2HSV)
+		# Filter out everything but particular colours using the cv2.inRange() method
+		yellow_mask = cv.inRange(hsv_image, hsv_yellow_lower, hsv_yellow_upper)
+		red_mask = cv.inRange(hsv_image, hsv_red_lower, hsv_red_upper)
+		blue_mask = cv.inRange(hsv_image, hsv_blue_lower, hsv_blue_upper)
+		purple_mask = cv.inRange(hsv_image, hsv_purple_lower, hsv_purple_upper)
+		# To combine the masks you should use the cv2.bitwise_or() method
+		# You can only bitwise_or two image at once, so multiple calls are necessary for more than two colours
+		combined_masks = cv.bitwise_or(red_mask, yellow_mask)
+		combined_masks = cv.bitwise_or(combined_masks, blue_mask)
+		combined_masks = cv.bitwise_or(combined_masks, purple_mask)
+		
+		self.image = cv.bitwise_and(self.cv_image, self.cv_image, mask=combined_masks)
+		
+		return combined_masks
+		
+		
+	def find_poster_contour(self):
+		combined_masks = self.extract_poster_colors()
+		contours, _ = cv.findContours(combined_masks, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+				
+		if len(contours):
+			c = max(contours, key=cv.contourArea)
+			((x,y), radius) = cv.minEnclosingCircle(c)
+			cx, cy = self.find_centroid(contours)
+			diff = self.find_diff(cx)
+			
+			if radius > 5:				
+				center = (int(x), int(y))
+				
+				#~ # draw a circle on the contour you're identifying
+				#~ cv.circle(self.image, center, int(radius), (255, 255, 255), 1)
+							
+				return radius, diff
+		
+		return None, None
 	
 	
 	def find_posters(self):
+		
 		gray = cv.cvtColor(self.cv_image, cv.COLOR_RGB2GRAY)
-		gray = cv.blur(gray, (7,7))
+		blurred_gray = cv.blur(gray, (7,7))
 		
-		edges = cv.Canny(gray, 100, 200)
+		edges = cv.Canny(blurred_gray, 100, 200)
 		
-		_, thresh = cv.threshold(edges, 150, 255, cv.THRESH_BINARY)
+		_, thresh = cv.threshold(edges, 200, 255, cv.THRESH_BINARY)
 		self.image = thresh
 		
 		contours, _ = cv.findContours(thresh, 1, 2)
@@ -169,13 +234,20 @@ class colourIdentifier():
 			
 			c = max(contours, key=cv.contourArea)
 			
-			cv.drawContours(self.cv_image, [c], -1, (0, 255, 0), 2)
+			cv.drawContours(self.image, [c], -1, (255, 0, 0), 2)
 		
 			approx = cv.approxPolyDP(c, 0.01*cv.arcLength(c, True), True)
 			
-			if len(approx) == 4:
-				print('FOUND A RECTANGLE!!')
-		
+			if len(approx) > 4 and self.faces_found(gray):
+				print('FOUND A POSTER!!', len(approx))
+				
+				#~ object_message = {
+								#~ 'radius':       radius,
+								#~ 'angle_from_centroid': diff
+							#~ }
+				#~ object_message = json.dumps(object_message)
+				#~ self.object_publisher.publish(object_message)
+	
 	
 	def image_callback(self, data):
 		# Convert the received image into a opencv image
@@ -194,7 +266,7 @@ class colourIdentifier():
 				#ret, thresh = cv.threshold(green_mask, 40, 255, 0)
 				self.find_colors(red_mask, green_mask)
 				
-			elif self.bot_status == 'focus_done':
+			elif self.bot_status == 'room_scan':
 				
 				self.find_posters()
 				
@@ -203,7 +275,7 @@ class colourIdentifier():
 		except CvBridgeError as e:
 			print(e)
 		cv.namedWindow('Camera Feed')
-		cv.imshow('Camera Feed', self.image)
+		cv.imshow('Camera Feed', self.cv_image)
 		cv.waitKey(3)
 		#Show the resultant images you have created. You can show all of them or just the end result if you wish to.
 

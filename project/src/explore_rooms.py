@@ -78,7 +78,7 @@ class Focus(State):
 	def send_bot_status(self):
 		status_message = {
 							'status': 'focus_done',
-							'file_path': './project/image_capture/green_circle.jpg'
+							'file_path': './src/group27/project/image_capture/green_circle.jpg'
 		}
 		status_message = json.dumps(status_message)
 		bot.status_publisher.publish(status_message)
@@ -94,7 +94,7 @@ class Focus(State):
 			bot.move(linear, angular)
 		
 		self.send_bot_status()
-					
+							
 		return 'focus_done'
 		
 
@@ -168,8 +168,20 @@ class RoomScan(State):
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
+		print(data)
+		
+		
+	def send_bot_status(self):
+		status_message = {
+							'status': 'room_scan'
+		}
+		status_message = json.dumps(status_message)
+		bot.status_publisher.publish(status_message)
+		
 	
 	def execute(self, userdata):
+		
+		self.send_bot_status()
 		
 		while not rospy.is_shutdown():
 			bot.move(angular=(0,0, math.pi/18))
