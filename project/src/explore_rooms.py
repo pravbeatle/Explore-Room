@@ -41,8 +41,11 @@ class CScan(State):
 
 	def execute(self, userdata):
 		
-		for i in range(320):
-			bot.move(angular=(0,0, 0.2))
+		for i in range(150):
+			if self.color_found:
+				break
+			
+			bot.move(angular=(0,0, 0.5))
 			bot.rate.sleep()
 	
 	
@@ -68,7 +71,7 @@ class Focus(State):
 	def send_bot_status(self):
 		status_message = {
 							'status': 'focus_done',
-							'file_path': './src/group27/project/image_capture/green_circle.jpg'
+							'file_path': './src/group27/project/image_capture/green_circle.png'
 		}
 		status_message = json.dumps(status_message)
 		bot.status_publisher.publish(status_message)
@@ -144,15 +147,17 @@ class NavRoom(State):
 
 class RoomScan(State):
 	def __init__(self, bot):
-		State.__init__(self, outcomes=['scan_done'])
+		State.__init__(self, outcomes=['poster_found', 'poster_not_found'])
 		self.object_subscriber = rospy.Subscriber('object_detection/object/json', String, self.process_json, queue_size=1)
+		self.poster_found = False
 		
 	
 	def process_json(self, data):
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
-		print(data)
+		if data['faces_found']:
+			self.poster_found = True
 		
 		
 	def send_bot_status(self):
@@ -167,11 +172,55 @@ class RoomScan(State):
 		
 		self.send_bot_status()
 		
-		while not rospy.is_shutdown():
-			bot.move(angular=(0,0, math.pi/18))
+		for i in range(150):
+			if self.poster_found:
+				break
+			
+			bot.move(angular=(0,0, 0.5))
+			bot.rate.sleep()
 		
-		return 'scan_done'
+		return 'poster_found' if self.poster_found else 'poster_not_found'
 		
+
+
+class FocusPoster(State):
+	def __init__(self, bot):
+		State.__init__(self, outcomes=['picture_taken'])
+		self.object_subscriber = rospy.Subscriber('object_detection/object/json', String, self.process_json, queue_size=1)
+		self.closest_radius = 50
+
+	
+	
+	def process_json(self, data):
+		data = message_converter.convert_ros_message_to_dictionary(data)['data']
+		data = json.loads(data)
+		
+		self.object_radius = data['radius']
+		self.object_diff = data['angle_from_centroid']
+		
+	
+	def send_bot_status(self):
+		status_message = {
+							'status': 'focus_done',
+							'file_path': './src/group27/project/image_capture/character_name.png'
+		}
+		status_message = json.dumps(status_message)
+		bot.status_publisher.publish(status_message)
+		
+	
+	def execute(self, userdata):
+		
+		while self.object_radius <= self.closest_radius:
+			# turn towards the goal
+			angular = (0,0,-self.object_diff) 
+			# Too far away from object, need to move forwards
+			linear = (0.2,0,0)
+			bot.move(linear, angular)
+		
+		self.send_bot_status()
+							
+		return 'picture_taken'
+
 		
 
 ###################################################################################
@@ -267,8 +316,9 @@ if __name__ == '__main__':
 			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
 			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
 			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'ROOM_SCAN'})
-			StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'scan_done': 'success'})
-			#~ StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'poster_done': 'success'})
+			StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'poster_found': 'FOCUS_ON_POSTER', 'poster_not_found': 'ROOM_SCAN'}) # change to explore room
+			StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success'})
+			#~ StateMachine.add('EXPLORE_ROOM', ExploreRoom(bot), transitions={'poster_found': 'FOCUS_ON_POSTER'})
 			
 			sm.execute()
 	

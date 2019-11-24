@@ -98,12 +98,11 @@ class colourIdentifier():
 		if len(contours):
 			c = max(contours, key=cv.contourArea)
 			((x,y), radius) = cv.minEnclosingCircle(c)
-			cx, cy = self.find_centroid(contours)
+			cx, cy = self.find_centroid(c)
 			diff = self.find_diff(cx)
 			
 			if radius > 5:
-				center = (int(x), int(y))
-				
+				#~ center = (int(x), int(y))
 				#~ # draw a circle on the contour you're identifying
 				#~ cv.circle(self.image, center, int(radius), (255, 255, 255), 1)
 				
@@ -124,10 +123,7 @@ class colourIdentifier():
 		self.find_contours('Green', green_mask)
 		
 		
-	def find_centroid(self, contours):
-		# Use the max() method to find the largest contour
-		c = max(contours, key=cv.contourArea)
-		
+	def find_centroid(self, c):
 		M = cv.moments(c)
 		if M['m00'] == 0:
 			cx, cy = 0, 0
@@ -139,7 +135,7 @@ class colourIdentifier():
 		
 		
 	def find_diff(self, cx):
-		height, width, depth = self.image.shape
+		height, width, channels = self.cv_image.shape
 		
 		return float((cx - (width/2))/100)
 		
@@ -157,13 +153,13 @@ class colourIdentifier():
 	def faces_found(self, gray):
 		
 		face_cascade = cv.CascadeClassifier('./src/group27/project/src/haarcascade_frontalface_default.xml')
-		faces = face_cascade.detectMultiScale(gray, 1.5, 5)
-		
+		faces = face_cascade.detectMultiScale(gray, 1.2, 5)
+				
 		for (x,y,w,h) in faces:
 		
 			cv.rectangle(self.cv_image,(x,y),(x+w,y+h),(255,0,0),2)
 				
-		return True if (len(faces) > 0) else False
+		return (True, x, y) if (len(faces) > 0) else (False, None, None)
 	
 	
 	def find_posters(self):
@@ -181,20 +177,28 @@ class colourIdentifier():
 		if len(contours):
 			
 			c = max(contours, key=cv.contourArea)
+			((x,y), radius) = cv.minEnclosingCircle(c)
 			
-			cv.drawContours(self.image, [c], -1, (255, 0, 0), 2)
+			#~ cv.drawContours(self.image, [c], -1, (255, 0, 0), 2)
+			center = (int(x), int(y))
+				#~ # draw a circle on the contour you're identifying
+			cv.circle(self.image, center, int(radius), (255, 0, 0), 2)
+				
 		
 			approx = cv.approxPolyDP(c, 0.01*cv.arcLength(c, True), True)
+			face_and_pos = self.faces_found(gray)
 			
-			if len(approx) > 4 and self.faces_found(gray):
+			if len(approx) > 4 and face_and_pos[0]:
 				print('FOUND A POSTER!!', len(approx))
+				diff = self.find_diff(face_and_pos[1])
 				
-				#~ object_message = {
-								#~ 'radius':       radius,
-								#~ 'angle_from_centroid': diff
-							#~ }
-				#~ object_message = json.dumps(object_message)
-				#~ self.object_publisher.publish(object_message)
+				object_message = {
+								'radius':       radius,
+								'angle_from_centroid': diff,
+								'faces_found': True
+							}
+				object_message = json.dumps(object_message)
+				self.object_publisher.publish(object_message)
 	
 	
 	def image_callback(self, data):
@@ -223,7 +227,7 @@ class colourIdentifier():
 		except CvBridgeError as e:
 			print(e)
 		cv.namedWindow('Camera Feed')
-		cv.imshow('Camera Feed', self.cv_image)
+		cv.imshow('Camera Feed', self.image)
 		cv.waitKey(3)
 		#Show the resultant images you have created. You can show all of them or just the end result if you wish to.
 
