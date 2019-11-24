@@ -26,7 +26,7 @@ class colourIdentifier():
 		self.image = None	# the image that we continuisly process on top of
 		self.cv_image = None
 		
-		self.bot_status = 'room_scan'
+		self.bot_status = ''
 
 		# Remember to initialise a CvBridge() and set up a subscriber to the image topic you wish to use
 		self.cv_bridge = CvBridge()
@@ -157,7 +157,7 @@ class colourIdentifier():
 	def faces_found(self, gray):
 		
 		face_cascade = cv.CascadeClassifier('./src/group27/project/src/haarcascade_frontalface_default.xml')
-		faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+		faces = face_cascade.detectMultiScale(gray, 1.5, 5)
 		
 		for (x,y,w,h) in faces:
 		

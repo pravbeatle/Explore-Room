@@ -37,26 +37,16 @@ class CScan(State):
 		
 		if data['circle_found'] and data['object_color'] == 'Green':
 			self.color_found = True
-	
-	
-	def color_or_scan_done(self, rad):
-		
-		if rad >= 2*math.pi or self.color_found:
-			return True
-		
-		return False
 
 
 	def execute(self, userdata):
-
-		# EDIT REQUIRED :- change code to only do one 360deg scan
-		radians_done = 0
 		
-		while not rospy.is_shutdown() and not self.color_or_scan_done(radians_done):
-			bot.move(angular=(0,0, math.pi/18))
+		for i in range(320):
+			bot.move(angular=(0,0, 0.2))
+			bot.rate.sleep()
 	
 	
-		return 'green_found'
+		return 'green_found' if self.color_found else 'nothing_found'
 
 
 class Focus(State):
@@ -102,13 +92,7 @@ class Focus(State):
 class NavRoom(State):
 	def __init__(self, bot):
 		State.__init__(self, outcomes=['nav_done'])
-		#~ self.odom_subscriber = rospy.Subscriber('/odom', Odometry, self.odom_callback)
 		self.tf_listener = tf.TransformListener()
-	
-	
-	#~ def odom_callback(self, data):
-		#~ self.position = data.pose.pose.position
-		#~ self.orientation = data.pose.pose.orientation
 	
 	
 	def create_pose_quat(self, x, y):
