@@ -164,58 +164,6 @@ class colourIdentifier():
 			cv.rectangle(self.cv_image,(x,y),(x+w,y+h),(255,0,0),2)
 				
 		return True if (len(faces) > 0) else False
-		
-		
-	def extract_poster_colors(self):
-		# Set the upper and lower bounds for the two colours you wish to identify
-		hsv_yellow_lower = np.array([25 - 10, 50, 50])
-		hsv_yellow_upper = np.array([25 + 10, 255, 255])
-		# Red has lower and upper bounds split on eithr side
-		hsv_red_lower = np.array([0, 100, 100])
-		hsv_red_upper = np.array([10, 255, 255])
-		
-		hsv_blue_lower = np.array([120 - 10, 100, 100])
-		hsv_blue_upper = np.array([120 + 10, 255, 255])
-		
-		hsv_purple_lower = np.array([120 - 10, 200, 100])
-		hsv_purple_upper = np.array([120 + 10, 255, 150])
-		
-		hsv_image = cv.cvtColor(self.cv_image, cv.COLOR_BGR2HSV)
-		# Filter out everything but particular colours using the cv2.inRange() method
-		yellow_mask = cv.inRange(hsv_image, hsv_yellow_lower, hsv_yellow_upper)
-		red_mask = cv.inRange(hsv_image, hsv_red_lower, hsv_red_upper)
-		blue_mask = cv.inRange(hsv_image, hsv_blue_lower, hsv_blue_upper)
-		purple_mask = cv.inRange(hsv_image, hsv_purple_lower, hsv_purple_upper)
-		# To combine the masks you should use the cv2.bitwise_or() method
-		# You can only bitwise_or two image at once, so multiple calls are necessary for more than two colours
-		combined_masks = cv.bitwise_or(red_mask, yellow_mask)
-		combined_masks = cv.bitwise_or(combined_masks, blue_mask)
-		combined_masks = cv.bitwise_or(combined_masks, purple_mask)
-		
-		self.image = cv.bitwise_and(self.cv_image, self.cv_image, mask=combined_masks)
-		
-		return combined_masks
-		
-		
-	def find_poster_contour(self):
-		combined_masks = self.extract_poster_colors()
-		contours, _ = cv.findContours(combined_masks, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
-				
-		if len(contours):
-			c = max(contours, key=cv.contourArea)
-			((x,y), radius) = cv.minEnclosingCircle(c)
-			cx, cy = self.find_centroid(contours)
-			diff = self.find_diff(cx)
-			
-			if radius > 5:				
-				center = (int(x), int(y))
-				
-				#~ # draw a circle on the contour you're identifying
-				#~ cv.circle(self.image, center, int(radius), (255, 255, 255), 1)
-							
-				return radius, diff
-		
-		return None, None
 	
 	
 	def find_posters(self):
