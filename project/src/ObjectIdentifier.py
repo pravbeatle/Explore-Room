@@ -6,11 +6,13 @@ import cv2 as cv
 import numpy as np
 import rospy
 import sys
-import json
 
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 from cv_bridge import CvBridge, CvBridgeError
+from rospy_message_converter import message_converter
+import json
+
 
 class colourIdentifier():
 
@@ -22,6 +24,9 @@ class colourIdentifier():
 		self.color_sensitivity = 10
 		
 		self.image = None	# the image that we continuisly process on top of
+		self.cv_image = None
+		
+		self.bot_status = ''
 
 		# Remember to initialise a CvBridge() and set up a subscriber to the image topic you wish to use
 		self.cv_bridge = CvBridge()
@@ -33,7 +38,10 @@ class colourIdentifier():
 		self.rate = rospy.Rate(10) 		#10hz
 		
 		# publish and subcribe to relevant topics
-		self.object_publisher = rospy.Publisher('object_detection/color/json', String, queue_size=10)
+		self.object_color_publisher = rospy.Publisher('object_detection/color/json', String, queue_size=10)
+		self.object_publisher = rospy.Publisher('object_detection/object/json', String, queue_size=10)
+		
+		self.status_subscriber = rospy.Subscriber('explorer_bot/status', String, self.status_callback, queue_size=1)
 				
 	
 	def extract_colors(self, cv_image):
@@ -68,9 +76,7 @@ class colourIdentifier():
 		
 		circles = cv.HoughCircles(image, cv.cv.CV_HOUGH_GRADIENT, 1, 20,
 		                           param1=20, param2=10, minRadius=5, maxRadius=50)
-		
-		cv.imshow('before circles', self.image)
-		cv.waitKey(3)
+		                           
 		
 		if circles is not None:
 			circles = np.uint8(np.around(circles))
@@ -80,9 +86,6 @@ class colourIdentifier():
 			    cv.circle(image,(i[0],i[1]),i[2],(0,255,0),2)
 			    # draw the center of the circle
 			    cv.circle(image,(i[0],i[1]),2,(0,0,255),3)
-			
-			cv.imshow('detected circles', image)
-			cv.waitKey(3)
 			
 			return True 
 		else:
@@ -95,12 +98,11 @@ class colourIdentifier():
 		if len(contours):
 			c = max(contours, key=cv.contourArea)
 			((x,y), radius) = cv.minEnclosingCircle(c)
-			cx, cy = self.find_centroid(contours)
+			cx, cy = self.find_centroid(c)
 			diff = self.find_diff(cx)
 			
 			if radius > 5:
-				center = (int(x), int(y))
-				
+				#~ center = (int(x), int(y))
 				#~ # draw a circle on the contour you're identifying
 				#~ cv.circle(self.image, center, int(radius), (255, 255, 255), 1)
 				
@@ -112,8 +114,7 @@ class colourIdentifier():
 							}
 							 
 				object_message = json.dumps(object_message)
-				self.object_publisher.publish(object_message)
-				rospy.loginfo(object_message)		
+				self.object_color_publisher.publish(object_message)
 		
 	
 	def find_colors(self, red_mask, green_mask):
@@ -122,10 +123,7 @@ class colourIdentifier():
 		self.find_contours('Green', green_mask)
 		
 		
-	def find_centroid(self, contours):
-		# Use the max() method to find the largest contour
-		c = max(contours, key=cv.contourArea)
-		
+	def find_centroid(self, c):
 		M = cv.moments(c)
 		if M['m00'] == 0:
 			cx, cy = 0, 0
@@ -137,10 +135,71 @@ class colourIdentifier():
 		
 		
 	def find_diff(self, cx):
-		height, width, depth = self.image.shape
+		height, width, channels = self.cv_image.shape
 		
 		return float((cx - (width/2))/100)
-
+		
+	
+	def status_callback(self, data):
+		data = message_converter.convert_ros_message_to_dictionary(data)['data']
+		data = json.loads(data)
+		
+		if data['status'] == 'focus_done':
+			cv.imwrite(data['file_path'], self.cv_image)
+		
+		self.bot_status = data['status']
+			
+	
+	def faces_found(self, gray):
+		
+		face_cascade = cv.CascadeClassifier('./src/group27/project/src/haarcascade_frontalface_default.xml')
+		faces = face_cascade.detectMultiScale(gray, 1.2, 5)
+				
+		for (x,y,w,h) in faces:
+		
+			cv.rectangle(self.cv_image,(x,y),(x+w,y+h),(255,0,0),2)
+				
+		return (True, x, y) if (len(faces) > 0) else (False, None, None)
+	
+	
+	def find_posters(self):
+		
+		gray = cv.cvtColor(self.cv_image, cv.COLOR_RGB2GRAY)
+		blurred_gray = cv.blur(gray, (7,7))
+		
+		edges = cv.Canny(blurred_gray, 100, 200)
+		
+		_, thresh = cv.threshold(edges, 200, 255, cv.THRESH_BINARY)
+		self.image = thresh
+		
+		contours, _ = cv.findContours(thresh, 1, 2)
+		
+		if len(contours):
+			
+			c = max(contours, key=cv.contourArea)
+			((x,y), radius) = cv.minEnclosingCircle(c)
+			
+			#~ cv.drawContours(self.image, [c], -1, (255, 0, 0), 2)
+			center = (int(x), int(y))
+				#~ # draw a circle on the contour you're identifying
+			cv.circle(self.image, center, int(radius), (255, 0, 0), 2)
+				
+		
+			approx = cv.approxPolyDP(c, 0.01*cv.arcLength(c, True), True)
+			face_and_pos = self.faces_found(gray)
+			
+			if len(approx) > 4 and face_and_pos[0]:
+				print('FOUND A POSTER!!', len(approx))
+				diff = self.find_diff(face_and_pos[1])
+				
+				object_message = {
+								'radius':       radius,
+								'angle_from_centroid': diff,
+								'faces_found': True
+							}
+				object_message = json.dumps(object_message)
+				self.object_publisher.publish(object_message)
+	
 	
 	def image_callback(self, data):
 		# Convert the received image into a opencv image
@@ -149,13 +208,20 @@ class colourIdentifier():
 			
 			# Convert the rgb image into a hsv image
 			cv_image = self.cv_bridge.imgmsg_to_cv2(data, "bgr8")
+			self.cv_image = cv.cvtColor(cv_image, cv.COLOR_BGR2RGB)
 			
-			red_mask, green_mask = self.extract_colors(cv_image)
-	
-			# Find the contours that appear within the certain colours mask using the cv2.findContours() method
-			# For <mode> use cv2.RETR_LIST for <method> use cv2.CHAIN_APPROX_SIMPLE
-			#ret, thresh = cv.threshold(green_mask, 40, 255, 0)
-			self.find_colors(red_mask, green_mask)
+			if self.bot_status == '':
+				red_mask, green_mask = self.extract_colors(cv_image)
+		
+				# Find the contours that appear within the certain colours mask using the cv2.findContours() method
+				# For <mode> use cv2.RETR_LIST for <method> use cv2.CHAIN_APPROX_SIMPLE
+				#ret, thresh = cv.threshold(green_mask, 40, 255, 0)
+				self.find_colors(red_mask, green_mask)
+				
+			elif self.bot_status == 'room_scan':
+				
+				self.find_posters()
+				
 									
 			# Be sure to do this for the other colour as well
 		except CvBridgeError as e:
