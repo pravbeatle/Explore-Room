@@ -12,6 +12,10 @@ from std_msgs.msg import String
 from cv_bridge import CvBridge, CvBridgeError
 from rospy_message_converter import message_converter
 import json
+import math
+from poster_tracker import ObjectTracker
+
+character_names = ['scarlet', 'plum', 'mustard', 'peacock']
 
 
 class colourIdentifier():
@@ -30,6 +34,10 @@ class colourIdentifier():
 
 		# Remember to initialise a CvBridge() and set up a subscriber to the image topic you wish to use
 		self.cv_bridge = CvBridge()
+		self.object_tracker = ObjectTracker()
+		
+		# loads and tracks all the cluedo characters
+		self.load_and_track_cluedo_images()
 		
 		self.camera_subscriber = rospy.Subscriber('camera/rgb/image_raw', Image, self.image_callback, queue_size=1)
 		# We covered which topic to subscribe to should you wish to receive image data
@@ -43,6 +51,16 @@ class colourIdentifier():
 		
 		self.status_subscriber = rospy.Subscriber('explorer_bot/status', String, self.status_callback, queue_size=1)
 				
+	
+	def load_and_track_cluedo_images(self):
+	
+		for name in character_names:
+			path = './src/group27/project/cluedo_images/{0}.png'.format(name)
+			image = cv.imread(path)
+			
+			self.object_tracker.add_target(image, (0, 0, image.shape[1], image.shape[0]), name)
+			
+
 	
 	def extract_colors(self, cv_image):
 		# Set the upper and lower bounds for the two colours you wish to identify
@@ -101,6 +119,7 @@ class colourIdentifier():
 			cx, cy = self.find_centroid(c)
 			diff = self.find_diff(cx)
 			
+			
 			if radius > 5:
 				#~ center = (int(x), int(y))
 				#~ # draw a circle on the contour you're identifying
@@ -112,7 +131,8 @@ class colourIdentifier():
 								'angle_from_centroid': diff,
 								'circle_found': self.find_circles()
 							}
-							 
+				
+											 
 				object_message = json.dumps(object_message)
 				self.object_color_publisher.publish(object_message)
 		
@@ -134,10 +154,12 @@ class colourIdentifier():
 		return cx, cy
 		
 		
-	def find_diff(self, cx):
+	def find_diff(self, x):
 		height, width, channels = self.cv_image.shape
 		
-		return float((cx - (width/2))/100)
+		diff = ((x - (width/2))/1000)
+		
+		return float(diff)
 		
 	
 	def status_callback(self, data):
@@ -148,7 +170,8 @@ class colourIdentifier():
 			cv.imwrite(data['file_path'], self.cv_image)
 		
 		self.bot_status = data['status']
-			
+		
+		
 	
 	def faces_found(self, gray):
 		
@@ -157,15 +180,20 @@ class colourIdentifier():
 				
 		for (x,y,w,h) in faces:
 		
-			cv.rectangle(self.cv_image,(x,y),(x+w,y+h),(255,0,0),2)
+			cv.rectangle(self.image,(x,y),(x+w,y+h),(255,0,0),2)
 				
-		return (True, x, y) if (len(faces) > 0) else (False, None, None)
+		return (True, x, y, w, h) if (len(faces) > 0) else (False, None, None, None, None)
+	
+	
+	def send_object_message(self, obj_msg):
+		object_message = json.dumps(obj_msg)
+		self.object_publisher.publish(object_message)
 	
 	
 	def find_posters(self):
 		
 		gray = cv.cvtColor(self.cv_image, cv.COLOR_RGB2GRAY)
-		blurred_gray = cv.blur(gray, (7,7))
+		blurred_gray = cv.blur(gray, (5,5))
 		
 		edges = cv.Canny(blurred_gray, 100, 200)
 		
@@ -177,29 +205,44 @@ class colourIdentifier():
 		if len(contours):
 			
 			c = max(contours, key=cv.contourArea)
-			((x,y), radius) = cv.minEnclosingCircle(c)
-			
-			#~ cv.drawContours(self.image, [c], -1, (255, 0, 0), 2)
-			center = (int(x), int(y))
-				#~ # draw a circle on the contour you're identifying
-			cv.circle(self.image, center, int(radius), (255, 0, 0), 2)
-				
+			contour_area = cv.contourArea(c)
+
+			#~ cv.drawContours(self.image, [c], -1, (255, 0, 0), 2)				
 		
 			approx = cv.approxPolyDP(c, 0.01*cv.arcLength(c, True), True)
-			face_and_pos = self.faces_found(gray)
 			
-			if len(approx) > 4 and face_and_pos[0]:
+			rectangle_condition = len(approx) >= 4 and len(approx) <= 6
+			
+			if  rectangle_condition and contour_area > 500:
 				print('FOUND A POSTER!!', len(approx))
-				diff = self.find_diff(face_and_pos[1])
+				print('area of contour :', contour_area)
 				
+				cv.drawContours(self.image, [approx], -1, (255, 0, 0), 3)
+				
+				((x,y), radius) = cv.minEnclosingCircle(c)
+				
+				cx, cy = self.find_centroid(c)
+				
+				center = (int(x), int(y))
+				# draw a circle on the contour you're identifying
+				cv.circle(self.image, center, int(radius), (255, 0, 0), 3)
+				print('radius of circle: ', radius)
+				
+				face_and_pos = self.faces_found(gray)
+								
 				object_message = {
+								'poster_found': True,
 								'radius':       radius,
-								'angle_from_centroid': diff,
-								'faces_found': True
+								'angle_from_face': self.find_diff(face_and_pos[1]) if face_and_pos[0] else self.find_diff(cx),
+								'face_area': int(face_and_pos[3]*face_and_pos[4]) if face_and_pos[0] else None,
+								'faces_found': face_and_pos[0]
 							}
-				object_message = json.dumps(object_message)
-				self.object_publisher.publish(object_message)
-	
+
+				self.send_object_message(object_message)
+				
+				
+			
+		
 	
 	def image_callback(self, data):
 		# Convert the received image into a opencv image
