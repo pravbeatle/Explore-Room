@@ -19,6 +19,7 @@ import json
 import yaml
 import math
 
+
 ############################## STATE MACHINE ####################################
 
 
@@ -56,7 +57,7 @@ class Focus(State):
 	def __init__(self, bot):
 		State.__init__(self, outcomes=['focus_done'])
 		self.object_subscriber = rospy.Subscriber('object_detection/color/json', String, self.process_json, queue_size=1)
-		self.closest_radius = 30
+		self.closest_radius = 40
 
 	
 	
@@ -95,14 +96,21 @@ class Focus(State):
 class NavRoom(State):
 	def __init__(self, bot):
 		State.__init__(self, outcomes=['nav_done'])
-		self.tf_listener = tf.TransformListener()
+		self.transform_listener = tf.TransformListener()
 	
 	
-	def create_pose_quat(self, x, y):
-		pos = { 'x': x, 'y': y, 'z': self.position[2] }
+	def calculate_pos_quat(self, closest_room):
+		pos_enterance = { 'x': closest_room['enterance_x'], 'y': closest_room['enterance_y'], 'z': self.position[2] }
+		pos_center = { 'x': closest_room['center_x'], 'y': closest_room['center_y'], 'z': self.position[2] }
 		quat = { 'r1': self.orientation[0], 'r2': self.orientation[1], 'r3': self.orientation[2], 'r4': self.orientation[3] }
 		
-		return pos, quat
+		closest_room = {
+			'pos_center': pos_center,
+			'pos_enterance': pos_enterance,
+			'quat': quat
+		}
+		
+		return closest_room
 		
 	
 	def dist(self, x, y):
@@ -122,24 +130,17 @@ class NavRoom(State):
 		return closest_room
 	
 	
-	def send_nav_goals(self, closest_room):
-		# go to enterance center
-		pos, quat = self.create_pose_quat(closest_room['enterance_x'], closest_room['enterance_y'])
-		bot.go_to(pos, quat)
-		
-		# go to room center
-		pos, quat = self.create_pose_quat(closest_room['center_x'], closest_room['center_y'])
-		bot.go_to(pos, quat)
-		
-	
-	
-	def execute(self, userdata):
+	def execute(self, userdata):	
 				
-		(self.position, self.orientation) = self.tf_listener.lookupTransform('/odom', '/map', rospy.Time(0))
+		(self.position, self.orientation) = self.transform_listener.lookupTransform("/base_link", "/map", rospy.Time(0))
 		
 		closest_room = self.calculate_closest_room()
 		
-		self.send_nav_goals(closest_room)
+		closest_room = self.calculate_pos_quat(closest_room)
+		
+		bot.set_closest_room(closest_room)
+		
+		bot.go_to_room_center()
 		
 		return 'nav_done'
 		
@@ -156,7 +157,7 @@ class RoomScan(State):
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
-		if data['faces_found']:
+		if data['poster_found']:
 			self.poster_found = True
 		
 		
@@ -185,9 +186,10 @@ class RoomScan(State):
 
 class FocusPoster(State):
 	def __init__(self, bot):
-		State.__init__(self, outcomes=['picture_taken'])
+		State.__init__(self, outcomes=['picture_taken', 'picture_not_taken'])
 		self.object_subscriber = rospy.Subscriber('object_detection/object/json', String, self.process_json, queue_size=1)
-		self.closest_radius = 50
+		self.closest_face_area = 3000
+		self.closest_radius = 85
 
 	
 	
@@ -195,8 +197,12 @@ class FocusPoster(State):
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
-		self.object_radius = data['radius']
-		self.object_diff = data['angle_from_centroid']
+		self.object_faces_found = data['faces_found']
+		self.object_face_area = data['face_area']
+		self.object_face_diff = data['angle_from_face']
+		self.poster_radius = data['radius']
+		self.poster_found = data['poster_found']
+		
 		
 	
 	def send_bot_status(self):
@@ -205,25 +211,27 @@ class FocusPoster(State):
 							'file_path': './src/group27/project/image_capture/character_name.png'
 		}
 		status_message = json.dumps(status_message)
-		bot.status_publisher.publish(status_message)
+		bot.status_publisher.publish(status_message)	
 		
 	
 	def execute(self, userdata):
 		
-		while self.object_radius <= self.closest_radius:
-			# turn towards the goal
-			angular = (0,0,-self.object_diff) 
-			# Too far away from object, need to move forwards
-			linear = (0.2,0,0)
+		while self.object_face_area < self.closest_face_area or self.poster_radius < self.closest_radius:
+			#~ # turn towards the goal
+			angular = (0,0,-self.object_face_diff) 
+			#~ # Too far away from object, need to move forwards
+			linear = (0.15,0,0)
 			bot.move(linear, angular)
-		
+			
 		self.send_bot_status()
-							
+		
 		return 'picture_taken'
-
+		
+		
 		
 
 ###################################################################################
+
 
 class TurtleBot:
 	def __init__(self):
@@ -236,6 +244,8 @@ class TurtleBot:
 		
 		# set linear and angular velocities
 		self.velocity = Twist()
+		
+		self.closest_room = None
 		
 		# publish and subcribe to relevant topics
 		self.velocity_publisher = rospy.Publisher('mobile_base/commands/velocity', Twist, queue_size=10)
@@ -299,11 +309,22 @@ class TurtleBot:
 		return result 
 		
 	
+	def set_closest_room(self, closest_room):
+		self.closest_room = closest_room
+		
+	def go_to_room_center(self):
+		self.go_to(self.closest_room['pos_center'], self.closest_room['quat'])
+	
+	def go_to_room_enterance(self):
+		self.go_to(self.closest_room['pos_enterance'], self.closest_room['quat'])
+		
+	
 	def shutdown(self):
 		if self.goal_sent:
 			self.move_base.cancel_goal()
 			rospy.loginfo("Stop Robot")
 			rospy.sleep(1)
+
 	
 
 if __name__ == '__main__':
@@ -313,15 +334,17 @@ if __name__ == '__main__':
 		
 		sm = StateMachine(outcomes=['success'])  # the end states of the machine
 		with sm:
+			
 			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
 			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
 			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'ROOM_SCAN'})
 			StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'poster_found': 'FOCUS_ON_POSTER', 'poster_not_found': 'ROOM_SCAN'}) # change to explore room
-			StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success'})
+			StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success', 'picture_not_taken': 'ROOM_SCAN'})
 			#~ StateMachine.add('EXPLORE_ROOM', ExploreRoom(bot), transitions={'poster_found': 'FOCUS_ON_POSTER'})
 			
 			sm.execute()
-	
+		
+		rospy.spin()
 
 	except rospy.ROSInterruptException:
 		rospy.loginfo('Quitting...')
