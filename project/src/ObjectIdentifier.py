@@ -15,7 +15,13 @@ import json
 import math
 from poster_tracker import ObjectTracker
 
-character_names = ['scarlet', 'plum', 'mustard', 'peacock']
+# keeps a count of character sightings
+cluedo_characters = {
+						'scarlet': 0, 
+						'plum': 0, 
+						'mustard': 0, 
+						'peacock': 0
+					}
 
 
 class colourIdentifier():
@@ -31,6 +37,8 @@ class colourIdentifier():
 		self.cv_image = None
 		
 		self.bot_status = ''
+		
+		self.face_counter = 0
 
 		# Remember to initialise a CvBridge() and set up a subscriber to the image topic you wish to use
 		self.cv_bridge = CvBridge()
@@ -54,9 +62,10 @@ class colourIdentifier():
 	
 	def load_and_track_cluedo_images(self):
 	
-		for name in character_names:
+		for name in list(cluedo_characters.keys()):
 			path = './src/group27/project/cluedo_images/{0}.png'.format(name)
-			image = cv.imread(path)
+			
+			image = cv.imread(path, 0)
 			
 			self.object_tracker.add_target(image, (0, 0, image.shape[1], image.shape[0]), name)
 			
@@ -167,19 +176,48 @@ class colourIdentifier():
 		data = json.loads(data)
 		
 		if data['status'] == 'focus_done':
-			cv.imwrite(data['file_path'], self.cv_image)
+			cv.imwrite(data['file_path'] + 'green_circle.png', self.cv_image)
+		elif data['status'] == 'poster_focus_done':
+			recognized_character = max(cluedo_characters, key=cluedo_characters.get)
+			
+			cv.imwrite(data['file_path'] + recognized_character + '.png', self.cv_image)
 		
 		self.bot_status = data['status']
+		
+	
+	
+	def check_for_character(self, gray):
+		
+		tracked_objects = self.object_tracker.track(gray)
+		count_characters_in_image = 0
+		
+		if len(tracked_objects):
+			
+			for tracked_obj in tracked_objects:
+				
+				target = tracked_obj[0]
+				
+				character_name = target[4]
+				
+				cluedo_characters[character_name] += 1
+				count_characters_in_image += 1
+		
+		return count_characters_in_image
+				
 		
 		
 	
 	def faces_found(self, gray):
 		
 		face_cascade = cv.CascadeClassifier('./src/group27/project/src/haarcascade_frontalface_default.xml')
-		faces = face_cascade.detectMultiScale(gray, 1.2, 5)
-				
-		for (x,y,w,h) in faces:
+		faces = face_cascade.detectMultiScale(gray, 1.1, 5)
 		
+		print('no of faces found: ', len(faces))
+		
+		for (x,y,w,h) in faces:
+			
+			self.face_counter+=1
+						
 			cv.rectangle(self.image,(x,y),(x+w,y+h),(255,0,0),2)
 				
 		return (True, x, y, w, h) if (len(faces) > 0) else (False, None, None, None, None)
@@ -190,10 +228,18 @@ class colourIdentifier():
 		self.object_publisher.publish(object_message)
 	
 	
+	def extract_poster_region(self, image, x, y, w, h):
+		circular_mask = np.zeros((image.shape[0], image.shape[1]), np.uint8)
+		cv.rectangle(circular_mask, (x, y), (x+w, y+h), 1, -1)
+		image = cv.bitwise_and(image, image, mask=circular_mask)
+		
+		return image
+	
+	
 	def find_posters(self):
 		
 		gray = cv.cvtColor(self.cv_image, cv.COLOR_RGB2GRAY)
-		blurred_gray = cv.blur(gray, (5,5))
+		blurred_gray = cv.blur(gray, (3,3))
 		
 		edges = cv.Canny(blurred_gray, 100, 200)
 		
@@ -213,32 +259,47 @@ class colourIdentifier():
 			
 			rectangle_condition = len(approx) >= 4 and len(approx) <= 6
 			
-			if  rectangle_condition and contour_area > 500:
-				print('FOUND A POSTER!!', len(approx))
-				print('area of contour :', contour_area)
+			#~ cv.drawContours(self.image, [approx], -1, (255, 0, 0), 3)
+			
+			
+			
+			if  rectangle_condition and contour_area >= 1000:
+				#~ print('FOUND A RECTANGLE!!', len(approx))
+				#~ print('area of contour :', contour_area)
 				
 				cv.drawContours(self.image, [approx], -1, (255, 0, 0), 3)
 				
-				((x,y), radius) = cv.minEnclosingCircle(c)
+				x, y, w, h = cv.boundingRect(c)
 				
-				cx, cy = self.find_centroid(c)
-				
-				center = (int(x), int(y))
-				# draw a circle on the contour you're identifying
-				cv.circle(self.image, center, int(radius), (255, 0, 0), 3)
-				print('radius of circle: ', radius)
-				
-				face_and_pos = self.faces_found(gray)
-								
-				object_message = {
-								'poster_found': True,
-								'radius':       radius,
-								'angle_from_face': self.find_diff(face_and_pos[1]) if face_and_pos[0] else self.find_diff(cx),
-								'face_area': int(face_and_pos[3]*face_and_pos[4]) if face_and_pos[0] else None,
-								'faces_found': face_and_pos[0]
-							}
-
-				self.send_object_message(object_message)
+				if w*h >= 4000:
+					
+					wbh = w/h
+					
+					cx, cy = self.find_centroid(c)
+					
+					#~ center = (int(x), int(y))
+					# draw a circle on the contour you're identifying
+					#~ cv.rectangle(self.image, (x, y), (x+w, y+h), (255, 0, 0), 3)
+					
+					poster_region = self.extract_poster_region(gray, x, y, w, h)
+					
+					face_and_pos = self.faces_found(poster_region)
+					
+					dimension_condition = (wbh >= 0.55 and wbh <= 0.9) 
+					
+									
+					if w*h >= 30000:
+						self.check_for_character(poster_region)
+	
+					# TODO :: reset face_counter at each exploration step
+					object_message = {
+									'poster_found': True if (self.face_counter and dimension_condition) else False,
+									'rect':       w*h,
+									'angle_from_poster': self.find_diff(cx),
+									'faces_found': face_and_pos[0]
+								}
+					
+					self.send_object_message(object_message)
 				
 				
 			

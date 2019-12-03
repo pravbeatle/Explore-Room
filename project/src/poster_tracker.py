@@ -19,7 +19,7 @@ FLANN_INDEX_LSH    = 6
 flann_params= dict(algorithm = FLANN_INDEX_LSH,
                    table_number = 6, # 12
                    key_size = 12,     # 20
-                   multi_probe_level = 1) #2
+                   multi_probe_level = 1) # 2
 
 MIN_MATCH_COUNT = 10
 
@@ -44,7 +44,7 @@ TrackedTarget = namedtuple('TrackedTarget', 'target, p0, p1, H, quad')
 
 class ObjectTracker:
     def __init__(self):
-        self.detector = cv2.ORB()
+        self.detector = cv2.ORB(nfeatures=1000)
         self.matcher = cv2.FlannBasedMatcher(flann_params, {})  # bug : need to pass empty dict (#1329)
         self.targets = []
         self.frame_points = []
@@ -64,6 +64,7 @@ class ObjectTracker:
         target = PlanarTarget(image = image, rect=rect, keypoints = points, descrs=descs, data=data)
         self.targets.append(target)
 
+
     def clear(self):
         '''Remove all targets'''
         self.targets = []
@@ -76,21 +77,29 @@ class ObjectTracker:
             return []
         matches = self.matcher.knnMatch(frame_descrs, k = 2)
         matches = [m[0] for m in matches if len(m) == 2 and m[0].distance < m[1].distance * 0.75]
+        
+                
         if len(matches) < MIN_MATCH_COUNT:
             return []
         matches_by_id = [[] for _ in xrange(len(self.targets))]
         for m in matches:
             matches_by_id[m.imgIdx].append(m)
         tracked = []
+        
+                
         for imgIdx, matches in enumerate(matches_by_id):
+						
             if len(matches) < MIN_MATCH_COUNT:
                 continue
+                
+                
             target = self.targets[imgIdx]
             p0 = [target.keypoints[m.trainIdx].pt for m in matches]
             p1 = [self.frame_points[m.queryIdx].pt for m in matches]
             p0, p1 = np.float32((p0, p1))
             H, status = cv2.findHomography(p0, p1, cv2.RANSAC, 3.0)
             status = status.ravel() != 0
+                        
             if status.sum() < MIN_MATCH_COUNT:
                 continue
             p0, p1 = p0[status], p1[status]
@@ -101,7 +110,9 @@ class ObjectTracker:
 
             track = TrackedTarget(target=target, p0=p0, p1=p1, H=H, quad=quad)
             tracked.append(track)
+        
         tracked.sort(key = lambda t: len(t.p0), reverse=True)
+        
         return tracked
 
     def detect_features(self, frame):
