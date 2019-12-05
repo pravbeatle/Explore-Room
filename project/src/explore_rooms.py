@@ -11,6 +11,8 @@ from rospy_message_converter import message_converter
 import json
 import math
 from turtlebot import TurtleBot
+import cv2 as cv
+import numpy as np
 
 image_capture_path = './src/group27/project/image_capture/'
 
@@ -43,7 +45,20 @@ class CScan(State):
 			
 			bot.move(angular=(0,0, 0.5))
 			bot.rate.sleep()
-	
+		#~ counter = 0
+		#~ radians = 1
+			
+		#~ while not rospy.is_shutdown():
+			
+			#~ for i in range(75):
+				#~ if self.color_found:
+					#~ break
+				
+				#~ bot.move(linear=(0.5, 0, 0), angular=(0,0, radians))
+				#~ bot.rate.sleep()
+			
+			#~ counter += 1
+			#~ radians -= 0.18
 	
 		return 'green_found' if self.color_found else 'nothing_found'
 
@@ -116,11 +131,10 @@ class NavRoom(State):
 	def calculate_closest_room(self):
 		distances = []
 		
-		for room in bot.rooms:
-			distances.append( self.dist(room['center_x'], room['center_y']) )
+		for i in range(len(bot.rooms)):
+			bot.rooms[i]['distance_from_bot'] = self.dist(bot.rooms[i]['center_x'], bot.rooms[i]['center_y'])
 		
-		closest_room_index = distances.index(min(distances))
-		closest_room = bot.rooms[closest_room_index]
+		closest_room = min(bot.rooms, key=lambda x:x['distance_from_bot'])
 		
 		return closest_room
 	
@@ -234,7 +248,6 @@ class FocusPoster(State):
 
 ###################################################################################
 
-	
 
 if __name__ == '__main__':
 	try: 
