@@ -11,6 +11,7 @@ from rospy_message_converter import message_converter
 import json
 import math
 from turtlebot import TurtleBot
+from occupancy_grid_map import OccupancyGridMap
 import cv2 as cv
 import numpy as np
 
@@ -67,7 +68,7 @@ class Focus(State):
 	def __init__(self, bot):
 		State.__init__(self, outcomes=['focus_done'])
 		self.object_subscriber = rospy.Subscriber('object_detection/color/json', String, self.process_json, queue_size=1)
-		self.closest_radius = 50
+		self.closest_radius = 45
 
 	
 	
@@ -252,19 +253,24 @@ class FocusPoster(State):
 if __name__ == '__main__':
 	try: 
 		rospy.init_node('Explorer', anonymous=True)
+		grid_map = OccupancyGridMap()
 		bot = TurtleBot()
 		
-		sm = StateMachine(outcomes=['success'])  # the end states of the machine
-		with sm:
+		sleep(2)
+		
+		grid_map.plot()
+		
+		#~ sm = StateMachine(outcomes=['success'])  # the end states of the machine
+		#~ with sm:
 			
-			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
-			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
-			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'ROOM_SCAN'})
-			StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'poster_found': 'FOCUS_ON_POSTER', 'poster_not_found': 'ROOM_SCAN'}) # change to explore room
-			StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success', 'picture_not_taken': 'ROOM_SCAN'})
+			#~ StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
+			#~ StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
+			#~ StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'ROOM_SCAN'})
+			#~ StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'poster_found': 'FOCUS_ON_POSTER', 'poster_not_found': 'ROOM_SCAN'}) # change to explore room
+			#~ StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success', 'picture_not_taken': 'ROOM_SCAN'})
 			#~ StateMachine.add('EXPLORE_ROOM', ExploreRoom(bot), transitions={'poster_found': 'FOCUS_ON_POSTER'})
 			
-			sm.execute()
+			#~ sm.execute()
 		
 		rospy.spin()
 
