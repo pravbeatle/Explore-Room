@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from nav_msgs.msg import OccupancyGrid
+from geometry_msgs.msg import Point
 
 import yaml
 
@@ -17,50 +18,44 @@ class OccupancyGridMap:
 		
 		ogm_subscriber = rospy.Subscriber('/map', OccupancyGrid, self.load_map, queue_size=1)
 		
-		with open(map_path + 'project_map.yaml', 'r') as stream:
-			try:
-				map_info = yaml.safe_load(stream)
-				
-				self.resolution = map_info['resolution']
-				self.origin = map_info['origin']
-				self.occupied_thresh = map_info['occupied_thresh']
-				self.free_thresh = map_info['free_thresh']
-				
-				
-			except yaml.YAMLError as e:
-				print(e)
 	
 	
 	def load_map(self, ogm):
 		
-		project_map = cv.imread(map_path + 'project_map.pgm')
-		(height, width, depth) = project_map.shape
+		print(ogm.info)
+		self.ogm = ogm
+		self.width = ogm.info.width
+		self.height = ogm.info.height
+		self.resolution = ogm.info.resolution
 		
-		og = np.asarray(ogm.data)
-		og = np.reshape(og, (width, height))
+		self.origin = Point()
 		
-		self.data = og
+		self.origin.x = ogm.info.origin.position.x
+		self.origin.y = ogm.info.origin.position.y
+		
+		self.data = ogm.data
 		
 	
-	def get_occupancy_value(self, point):
+	def get_occupancy_value(self, x, y):
 		    
-		x, y = point
-		x_index, y_index = self.get_index_from_location(x, y)
+		i, j = self.get_index_from_location(x, y)
 		
-		return self.data[x_index][y_index]
+		print('map point of indices : ', self.get_location_from_index(i, j))
+		
+		return self.data[i*self.width + j]
 		
 	
 	def get_index_from_location(self, x, y):
-		x_index = int(round(x/self.resolution))
-		y_index = int(round(y/self.resolution))
+		i = int((y - self.origin.y) / self.resolution)
+		j = int((x - self.origin.x) / self.resolution)
 
 
-		return x_index, y_index
+		return i, j
 		
 		
 	def get_location_from_index(self, x_index, y_index):
-		x = x_index*self.resolution
-		y = y_index*self.resolution
+		y = x_index*self.resolution + self.origin.y
+		x = y_index*self.resolution + self.origin.x
 		
 		return x, y
 

@@ -257,8 +257,8 @@ if __name__ == '__main__':
 		bot = TurtleBot()
 		
 		sleep(2)
-		
-		grid_map.plot()
+	
+		print(grid_map.get_occupancy_value(-2.3, 5.63))
 		
 		#~ sm = StateMachine(outcomes=['success'])  # the end states of the machine
 		#~ with sm:
