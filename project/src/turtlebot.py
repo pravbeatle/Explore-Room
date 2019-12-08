@@ -7,6 +7,7 @@ from geometry_msgs.msg import Point, Pose, Quaternion, Twist
 from std_msgs.msg import String
 
 import yaml
+import numpy as np
 
 
 
@@ -58,7 +59,18 @@ class TurtleBot:
 		self.velocity_publisher.publish(self.velocity)
 		
 	
-	def go_to(self, pose, quat):
+	def calculate_pos_quat(self, x, y):
+		theta = 0.1
+		pos = {'x': x, 'y' : y, 'z': 0}
+		quat = {'r1' : 0.000, 'r2' : 0.000, 'r3' : np.sin(theta/2.0), 'r4' : np.cos(theta/2.0)}
+		
+		return pos, quat
+	
+	
+	def go_to(self, pose, quat, mode=''):
+		
+		if mode == 'point':
+			pose, quat = self.calculate_pos_quat(pose, quat)
 	
 		# send a goal
 		self.goal_sent = True

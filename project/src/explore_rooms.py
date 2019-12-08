@@ -111,11 +111,15 @@ class NavRoom(State):
 	
 	
 	def calculate_pos_quat(self, closest_room):
+		center = {'x': closest_room['center_x'], 'y': closest_room['center_y']}
+		enterance = {'x': closest_room['enterance_x'], 'y': closest_room['enterance_y']}
 		pos_enterance = { 'x': closest_room['enterance_x'], 'y': closest_room['enterance_y'], 'z': self.position[2] }
 		pos_center = { 'x': closest_room['center_x'], 'y': closest_room['center_y'], 'z': self.position[2] }
 		quat = { 'r1': self.orientation[0], 'r2': self.orientation[1], 'r3': self.orientation[2], 'r4': self.orientation[3] }
 		
 		closest_room = {
+			'center': center,
+			'enterance': enterance,
 			'pos_center': pos_center,
 			'pos_enterance': pos_enterance,
 			'quat': quat
@@ -244,6 +248,26 @@ class FocusPoster(State):
 		
 		return 'picture_taken'
 		
+
+
+class ExploreRoom(State):
+	
+	def __init__(self, bot, grid_map):
+		State.__init__(self, outcomes=['poster_found'])
+			
+	
+	
+	
+	def execute(self, userdata):
+		
+		center_x = -2.3
+		center_y = 5.63
+		
+		bot.go_to(center_x, center_y, mode='point')
+		x, y = grid_map.find_room_dimensions(center_x, center_y)
+		print('a free point near wall : ', (x, y))
+		
+		bot.go_to(x, y, mode='point')
 		
 		
 
@@ -258,19 +282,17 @@ if __name__ == '__main__':
 		
 		sleep(2)
 	
-		print(grid_map.get_occupancy_value(-2.3, 5.63))
-		
-		#~ sm = StateMachine(outcomes=['success'])  # the end states of the machine
-		#~ with sm:
+		sm = StateMachine(outcomes=['success'])  # the end states of the machine
+		with sm:
 			
 			#~ StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
 			#~ StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
 			#~ StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'ROOM_SCAN'})
 			#~ StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'poster_found': 'FOCUS_ON_POSTER', 'poster_not_found': 'ROOM_SCAN'}) # change to explore room
 			#~ StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success', 'picture_not_taken': 'ROOM_SCAN'})
-			#~ StateMachine.add('EXPLORE_ROOM', ExploreRoom(bot), transitions={'poster_found': 'FOCUS_ON_POSTER'})
+			StateMachine.add('EXPLORE_ROOM', ExploreRoom(bot, grid_map), transitions={'poster_found': 'success'})
 			
-			#~ sm.execute()
+			sm.execute()
 		
 		rospy.spin()
 
