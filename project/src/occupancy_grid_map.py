@@ -1,5 +1,4 @@
 
-
 import rospy
 import cv2 as cv 
 import numpy as np
@@ -10,6 +9,8 @@ from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Point
 
 import yaml
+import math
+from itertools import permutations
 
 map_path = './src/group27/project/example/map/'
 
@@ -29,8 +30,16 @@ class OccupancyGridMap:
 		self.resolution = ogm.info.resolution
 		
 		
-		self.free_thresh = 0.196
-		self.occupied_thresh = 0.65
+		with open(map_path + 'project_map.yaml', 'r') as stream:
+			try:
+				map_info = yaml.safe_load(stream)
+				
+				self.free_thresh = map_info['free_thresh']
+				self.occupied_thresh = map_info['occupied_thresh']
+				
+			except yaml.YAMLError as e:
+				print(e)
+		
 		
 		self.origin = Point()
 		
@@ -91,19 +100,50 @@ class OccupancyGridMap:
 			
 			occupancy_value = self.get_occupancy_value_by_index(x, y)
 		
-		x += (-1*dir_x*10)
-		y += (-1*dir_y*10)
+		# keep going back by 10 cells from wall until you find a free spot
+		while True:
+			x += (-1*dir_x*10)
+			y += (-1*dir_y*10)
+			
+			occupancy_value = self.get_occupancy_value_by_index(x, y)
+			
+			if occupancy_value <= self.free_thresh:
+				break
 		
 		return x, y 
+		
+	
+	def dist(self, x1, y1, x2, y2):
+		
+		return math.sqrt( (x1-x2)**2 + (y1-y2)**2 )
 			
 		 
-	def find_room_dimensions(self, center_x, center_y):
+	def sample_wall_points(self, center_x, center_y):
 		
 		center_x_index, center_y_index = self.get_index_from_location(center_x, center_y)
 		
-		x, y = self.find_wall_by_direction(center_x_index, center_y_index, -1, -1)
+		sampled_points = []
+		directions = list(permutations([-1, 0, 1], 2))
+		directions.append((1, 1))
+		directions.append((-1,-1))
 		
-		return self.get_location_from_index(x, y)
+		for direction in directions:
+			x, y = self.find_wall_by_direction(center_x_index, center_y_index, direction[0], direction[1])
+			
+			x_loc, y_loc = self.get_location_from_index(x, y)
+			
+			sampled_points.append(
+				{
+					'point': (x_loc, y_loc), 
+					'dist_from_center': self.dist(center_x, center_y, x_loc, y_loc), 
+					'visited': False
+				}
+			)
+		
+		sampled_points = sorted(sampled_points, key = lambda x: x['dist_from_center'])
+		del sampled_points[-1]
+		
+		return sampled_points
 
 
 	def plot(self, alpha=1, min_val=0, origin='lower'):

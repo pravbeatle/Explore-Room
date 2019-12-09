@@ -9,7 +9,7 @@ from std_msgs.msg import String
 import yaml
 import numpy as np
 
-
+input_points_path = './src/group27/project/example/input_points.yaml'
 
 class TurtleBot:
 	def __init__(self):
@@ -35,7 +35,7 @@ class TurtleBot:
 		
 		self.move_base.wait_for_server(rospy.Duration(5))
 		
-		with open('./src/group27/project/example/input_points.yaml', 'r') as stream:
+		with open(input_points_path, 'r') as stream:
 			try:
 				pts = yaml.safe_load(stream)
 				self.rooms = [

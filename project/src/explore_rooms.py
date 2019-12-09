@@ -46,20 +46,6 @@ class CScan(State):
 			
 			bot.move(angular=(0,0, 0.5))
 			bot.rate.sleep()
-		#~ counter = 0
-		#~ radians = 1
-			
-		#~ while not rospy.is_shutdown():
-			
-			#~ for i in range(75):
-				#~ if self.color_found:
-					#~ break
-				
-				#~ bot.move(linear=(0.5, 0, 0), angular=(0,0, radians))
-				#~ bot.rate.sleep()
-			
-			#~ counter += 1
-			#~ radians -= 0.18
 	
 		return 'green_found' if self.color_found else 'nothing_found'
 
@@ -106,7 +92,7 @@ class Focus(State):
 
 class NavRoom(State):
 	def __init__(self, bot):
-		State.__init__(self, outcomes=['nav_done'])
+		State.__init__(self, outcomes=['nav_done', 'nav_not_done'])
 		self.transform_listener = tf.TransformListener()
 	
 	
@@ -154,18 +140,20 @@ class NavRoom(State):
 		
 		bot.set_closest_room(closest_room)
 		
-		bot.go_to_room_center()
+		success = bot.go_to_room_enterance()
 		
-		return 'nav_done'
+		return 'nav_done' if success else 'nav_not_done'
 		
 
 
-class RoomScan(State):
-	def __init__(self, bot):
+class ExploreRoom(State):
+	
+	def __init__(self, bot, grid_map):
 		State.__init__(self, outcomes=['poster_found', 'poster_not_found'])
 		self.object_subscriber = rospy.Subscriber('object_detection/object/json', String, self.process_json, queue_size=1)
 		self.poster_found = False
 		
+	
 	
 	def process_json(self, data):
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
@@ -181,26 +169,55 @@ class RoomScan(State):
 		}
 		status_message = json.dumps(status_message)
 		bot.status_publisher.publish(status_message)
+	
+	
+	def circular_scan(self):
 		
+		for i in range(150):
+			if self.poster_found:
+				return
+			
+			bot.move(angular=(0,0, 0.5))
+			bot.rate.sleep()
+		
+	
 	
 	def execute(self, userdata):
 		
 		self.send_bot_status()
 		
-		for i in range(150):
+		center_x = bot.closest_room['center']['x']
+		center_y = bot.closest_room['center']['x']
+		
+		wall_points =  grid_map.sample_wall_points(center_x, center_y)
+		print('no of pts found: ', len(wall_points))
+		
+		
+		for wall_point in wall_points:
+			
+			x, y = wall_point['point']
+			
+			print('going to point : ', (x, y))
+			
+			success = bot.go_to(x, y, mode='point')
+			
+			if success:
+				wall_point['visited'] = True
+				self.circular_scan()
+				
+			
 			if self.poster_found:
 				break
+		
 			
-			bot.move(angular=(0,0, 0.5))
-			bot.rate.sleep()
-		
-		return 'poster_found' if self.poster_found else 'poster_not_found'
-		
+		return 'poster_found' if self.poster_found else 'poster_not_found'		
+
+
 
 
 class FocusPoster(State):
 	def __init__(self, bot):
-		State.__init__(self, outcomes=['picture_taken', 'picture_not_taken'])
+		State.__init__(self, outcomes=['picture_taken'])
 		self.object_subscriber = rospy.Subscriber('object_detection/object/json', String, self.process_json, queue_size=1)
 		self.closest_poster_area = 45000
 		
@@ -248,27 +265,6 @@ class FocusPoster(State):
 		
 		return 'picture_taken'
 		
-
-
-class ExploreRoom(State):
-	
-	def __init__(self, bot, grid_map):
-		State.__init__(self, outcomes=['poster_found'])
-			
-	
-	
-	
-	def execute(self, userdata):
-		
-		center_x = -2.3
-		center_y = 5.63
-		
-		bot.go_to(center_x, center_y, mode='point')
-		x, y = grid_map.find_room_dimensions(center_x, center_y)
-		print('a free point near wall : ', (x, y))
-		
-		bot.go_to(x, y, mode='point')
-		
 		
 
 ###################################################################################
@@ -279,18 +275,16 @@ if __name__ == '__main__':
 		rospy.init_node('Explorer', anonymous=True)
 		grid_map = OccupancyGridMap()
 		bot = TurtleBot()
-		
-		sleep(2)
 	
-		sm = StateMachine(outcomes=['success'])  # the end states of the machine
+		sm = StateMachine(outcomes=['success', 'failure'])  # the end states of the machine
 		with sm:
 			
-			#~ StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
-			#~ StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
-			#~ StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'ROOM_SCAN'})
-			#~ StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'poster_found': 'FOCUS_ON_POSTER', 'poster_not_found': 'ROOM_SCAN'}) # change to explore room
-			#~ StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success', 'picture_not_taken': 'ROOM_SCAN'})
-			StateMachine.add('EXPLORE_ROOM', ExploreRoom(bot, grid_map), transitions={'poster_found': 'success'})
+			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
+			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
+			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'EXPLORE_ROOM', 'nav_not_done': 'CSCAN'})
+			StateMachine.add('EXPLORE_ROOM', ExploreRoom(bot, grid_map), transitions={'poster_found': 'FOCUS_ON_POSTER', 'poster_not_found': 'failure'})
+			StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success'})
+			
 			
 			sm.execute()
 		
