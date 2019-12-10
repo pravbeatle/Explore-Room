@@ -143,6 +143,8 @@ class OccupancyGridMap:
 		sampled_points = sorted(sampled_points, key = lambda x: x['dist_from_center'])
 		del sampled_points[-1]
 		
+		sampled_points = sampled_points[::-1]
+		
 		return sampled_points
 
 

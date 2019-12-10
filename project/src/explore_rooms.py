@@ -173,6 +173,15 @@ class ExploreRoom(State):
 		}
 		status_message = json.dumps(status_message)
 		bot.status_publisher.publish(status_message)
+		
+	
+	#~ def clear_face_counter(self):
+		#~ status_message = {
+							#~ 'status': 'room_scan',
+							#~ 'reset_face_counter': True
+		#~ }
+		#~ status_message = json.dumps(status_message)
+		#~ bot.status_publisher.publish(status_message)	
 	
 	
 	def circular_scan(self):
@@ -262,7 +271,7 @@ class FocusPoster(State):
 			#~ # turn towards the goal
 			angular = (0,0,-self.object_poster_diff) 
 			#~ # Too far away from object, need to move forwards
-			linear = (0.15,0,0)
+			linear = (0.1,0,0)
 			bot.move(linear, angular)
 			
 		self.send_bot_status()

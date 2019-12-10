@@ -180,7 +180,13 @@ class colourIdentifier():
 		if data['status'] == 'focus_done':
 			cv.imwrite(data['file_path'] + 'green_circle.png', rgb_image)
 		elif data['status'] == 'poster_focus_done':
+			
+			print('voting results : ', cluedo_characters)
+			
 			recognized_character = max(cluedo_characters, key=cluedo_characters.get)
+			
+			with open(data['file_path'] + 'cluedo_character.txt', 'a') as the_file:
+				the_file.write('The Cluedo Character on the Poster is : ' + recognized_character)
 			
 			cv.imwrite(data['file_path'] + recognized_character + '.png', rgb_image)
 		
@@ -212,7 +218,7 @@ class colourIdentifier():
 	def faces_found(self, gray):
 		
 		face_cascade = cv.CascadeClassifier('./src/group27/project/src/haarcascade_frontalface_default.xml')
-		faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+		faces = face_cascade.detectMultiScale(gray, 1.2, 5)
 		
 		print('no of faces found: ', len(faces))
 		
@@ -300,6 +306,8 @@ class colourIdentifier():
 									'angle_from_poster': self.find_diff(cx),
 									'faces_found': face_and_pos[0]
 								}
+								
+					print('object details : ', object_message)
 					
 					self.send_object_message(object_message)
 				
