@@ -40,11 +40,11 @@ class CScan(State):
 
 	def execute(self, userdata):
 		
-		for i in range(150):
+		for i in range(300):
 			if self.color_found:
 				break
 			
-			bot.move(angular=(0,0, 0.5))
+			bot.move(angular=(0,0, 0.25))
 			bot.rate.sleep()
 	
 		return 'green_found' if self.color_found else 'nothing_found'
@@ -123,7 +123,7 @@ class NavRoom(State):
 		distances = []
 		
 		for i in range(len(bot.rooms)):
-			bot.rooms[i]['distance_from_bot'] = self.dist(bot.rooms[i]['center_x'], bot.rooms[i]['center_y'])
+			bot.rooms[i]['distance_from_bot'] = self.dist(bot.rooms[i]['enterance_x'], bot.rooms[i]['enterance_y'])
 		
 		closest_room = min(bot.rooms, key=lambda x:x['distance_from_bot'])
 		
@@ -134,9 +134,13 @@ class NavRoom(State):
 				
 		(self.position, self.orientation) = self.transform_listener.lookupTransform("/base_link", "/map", rospy.Time(0))
 		
+		print('position of the bot : ', self.position)
+		
 		closest_room = self.calculate_closest_room()
 		
 		closest_room = self.calculate_pos_quat(closest_room)
+		
+		print('closest room : ', closest_room)
 		
 		bot.set_closest_room(closest_room)
 		
@@ -173,11 +177,11 @@ class ExploreRoom(State):
 	
 	def circular_scan(self):
 		
-		for i in range(150):
+		for i in range(300):
 			if self.poster_found:
 				return
 			
-			bot.move(angular=(0,0, 0.5))
+			bot.move(angular=(0,0, 0.25))
 			bot.rate.sleep()
 		
 	
@@ -187,7 +191,9 @@ class ExploreRoom(State):
 		self.send_bot_status()
 		
 		center_x = bot.closest_room['center']['x']
-		center_y = bot.closest_room['center']['x']
+		center_y = bot.closest_room['center']['y']
+		
+		print('center point for finding wall pts : ', (center_x, center_y))
 		
 		wall_points =  grid_map.sample_wall_points(center_x, center_y)
 		print('no of pts found: ', len(wall_points))

@@ -102,10 +102,14 @@ class TurtleBot:
 		self.closest_room = closest_room
 		
 	def go_to_room_center(self):
-		self.go_to(self.closest_room['pos_center'], self.closest_room['quat'])
+		result = self.go_to(self.closest_room['pos_center'], self.closest_room['quat'])
+		
+		return result
 	
 	def go_to_room_enterance(self):
-		self.go_to(self.closest_room['pos_enterance'], self.closest_room['quat'])
+		result = self.go_to(self.closest_room['pos_enterance'], self.closest_room['quat'])
+		
+		return result
 		
 	
 	def shutdown(self):

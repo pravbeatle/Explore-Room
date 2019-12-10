@@ -100,10 +100,10 @@ class OccupancyGridMap:
 			
 			occupancy_value = self.get_occupancy_value_by_index(x, y)
 		
-		# keep going back by 10 cells from wall until you find a free spot
+		# keep going back by 15 cells from wall until you find a free spot
 		while True:
-			x += (-1*dir_x*10)
-			y += (-1*dir_y*10)
+			x += (-1*dir_x*15)
+			y += (-1*dir_y*15)
 			
 			occupancy_value = self.get_occupancy_value_by_index(x, y)
 			
