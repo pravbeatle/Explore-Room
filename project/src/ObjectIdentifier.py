@@ -185,7 +185,7 @@ class colourIdentifier():
 			
 			recognized_character = max(cluedo_characters, key=cluedo_characters.get)
 			
-			with open(data['file_path'] + 'cluedo_character.txt', 'a') as the_file:
+			with open(data['file_path'] + 'cluedo_character.txt', 'w') as the_file:
 				the_file.write('The Cluedo Character on the Poster is : ' + recognized_character)
 			
 			cv.imwrite(data['file_path'] + recognized_character + '.png', rgb_image)
