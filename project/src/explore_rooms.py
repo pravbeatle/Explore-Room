@@ -134,6 +134,8 @@ class Focus(State):
 	
 	
 	def process_json(self, data):
+		# receive information about the green contour
+
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
@@ -143,6 +145,8 @@ class Focus(State):
 		
 	
 	def send_bot_status(self):
+		# send status to the ObjectIdentifier node so that it can capture the picture
+
 		status_message = {
 							'status': 'focus_done',
 							'file_path': image_capture_path
@@ -152,6 +156,7 @@ class Focus(State):
 		
 	
 	def execute(self, userdata):
+		# keep going closer to the object, turning towards it until we reach a radius threshold
 		
 		while self.object_radius <= self.closest_radius:
 			# turn towards the goal
