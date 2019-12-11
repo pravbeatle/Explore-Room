@@ -88,6 +88,7 @@ class CheckRooms(State):
 		
 
 	def circular_scan(self):
+		# do a single 360 deg scan of the environment 
 		
 		for i in range(300):
 			if self.color_found:
@@ -195,6 +196,8 @@ class NavRoom(State):
 		
 	
 	def calculate_closest_room(self):
+		# calculate closest room from bot's current location
+
 		distances = []
 		
 		for i in range(len(bot.rooms)):
@@ -206,6 +209,7 @@ class NavRoom(State):
 	
 	
 	def execute(self, userdata):	
+		# get bot's location in map frame, calculate the closest room and navigate to it
 				
 		self.transform_listener.waitForTransform("/map", "/base_link", rospy.Time(0), rospy.Duration(4.0))
 		

@@ -15,6 +15,10 @@ import json
 import math
 from poster_tracker import ObjectTracker
 
+
+cluedo_path = './src/group27/project/cluedo_images/'
+
+
 # keeps a count of character sightings
 cluedo_characters = {
 						'scarlet': 0, 
@@ -63,7 +67,7 @@ class colourIdentifier():
 	def load_and_track_cluedo_images(self):
 	
 		for name in list(cluedo_characters.keys()):
-			path = './src/group27/project/cluedo_images/{0}.png'.format(name)
+			path = cluedo_path + '{0}.png'.format(name)
 			
 			image = cv.imread(path, 0)
 			
