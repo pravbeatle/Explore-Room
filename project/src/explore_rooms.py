@@ -11,6 +11,9 @@ from rospy_message_converter import message_converter
 import json
 import math
 from turtlebot import TurtleBot
+from occupancy_grid_map import OccupancyGridMap
+import cv2 as cv
+import numpy as np
 
 image_capture_path = './src/group27/project/image_capture/'
 
@@ -37,13 +40,12 @@ class CScan(State):
 
 	def execute(self, userdata):
 		
-		for i in range(150):
+		for i in range(300):
 			if self.color_found:
 				break
 			
-			bot.move(angular=(0,0, 0.5))
+			bot.move(angular=(0,0, 0.25))
 			bot.rate.sleep()
-	
 	
 		return 'green_found' if self.color_found else 'nothing_found'
 
@@ -52,7 +54,7 @@ class Focus(State):
 	def __init__(self, bot):
 		State.__init__(self, outcomes=['focus_done'])
 		self.object_subscriber = rospy.Subscriber('object_detection/color/json', String, self.process_json, queue_size=1)
-		self.closest_radius = 50
+		self.closest_radius = 45
 
 	
 	
@@ -90,16 +92,20 @@ class Focus(State):
 
 class NavRoom(State):
 	def __init__(self, bot):
-		State.__init__(self, outcomes=['nav_done'])
+		State.__init__(self, outcomes=['nav_done', 'nav_not_done'])
 		self.transform_listener = tf.TransformListener()
 	
 	
 	def calculate_pos_quat(self, closest_room):
+		center = {'x': closest_room['center_x'], 'y': closest_room['center_y']}
+		enterance = {'x': closest_room['enterance_x'], 'y': closest_room['enterance_y']}
 		pos_enterance = { 'x': closest_room['enterance_x'], 'y': closest_room['enterance_y'], 'z': self.position[2] }
 		pos_center = { 'x': closest_room['center_x'], 'y': closest_room['center_y'], 'z': self.position[2] }
 		quat = { 'r1': self.orientation[0], 'r2': self.orientation[1], 'r3': self.orientation[2], 'r4': self.orientation[3] }
 		
 		closest_room = {
+			'center': center,
+			'enterance': enterance,
 			'pos_center': pos_center,
 			'pos_enterance': pos_enterance,
 			'quat': quat
@@ -116,11 +122,10 @@ class NavRoom(State):
 	def calculate_closest_room(self):
 		distances = []
 		
-		for room in bot.rooms:
-			distances.append( self.dist(room['center_x'], room['center_y']) )
+		for i in range(len(bot.rooms)):
+			bot.rooms[i]['distance_from_bot'] = self.dist(bot.rooms[i]['enterance_x'], bot.rooms[i]['enterance_y'])
 		
-		closest_room_index = distances.index(min(distances))
-		closest_room = bot.rooms[closest_room_index]
+		closest_room = min(bot.rooms, key=lambda x:x['distance_from_bot'])
 		
 		return closest_room
 	
@@ -129,24 +134,30 @@ class NavRoom(State):
 				
 		(self.position, self.orientation) = self.transform_listener.lookupTransform("/base_link", "/map", rospy.Time(0))
 		
+		print('position of the bot : ', self.position)
+		
 		closest_room = self.calculate_closest_room()
 		
 		closest_room = self.calculate_pos_quat(closest_room)
 		
+		print('closest room : ', closest_room)
+		
 		bot.set_closest_room(closest_room)
 		
-		bot.go_to_room_center()
+		success = bot.go_to_room_enterance()
 		
-		return 'nav_done'
+		return 'nav_done' if success else 'nav_not_done'
 		
 
 
-class RoomScan(State):
-	def __init__(self, bot):
+class ExploreRoom(State):
+	
+	def __init__(self, bot, grid_map):
 		State.__init__(self, outcomes=['poster_found', 'poster_not_found'])
 		self.object_subscriber = rospy.Subscriber('object_detection/object/json', String, self.process_json, queue_size=1)
 		self.poster_found = False
 		
+	
 	
 	def process_json(self, data):
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
@@ -164,24 +175,64 @@ class RoomScan(State):
 		bot.status_publisher.publish(status_message)
 		
 	
+	#~ def clear_face_counter(self):
+		#~ status_message = {
+							#~ 'status': 'room_scan',
+							#~ 'reset_face_counter': True
+		#~ }
+		#~ status_message = json.dumps(status_message)
+		#~ bot.status_publisher.publish(status_message)	
+	
+	
+	def circular_scan(self):
+		
+		for i in range(300):
+			if self.poster_found:
+				return
+			
+			bot.move(angular=(0,0, 0.25))
+			bot.rate.sleep()
+		
+	
+	
 	def execute(self, userdata):
 		
 		self.send_bot_status()
 		
-		for i in range(150):
+		center_x = bot.closest_room['center']['x']
+		center_y = bot.closest_room['center']['y']
+		
+		print('center point for finding wall pts : ', (center_x, center_y))
+		
+		wall_points =  grid_map.sample_wall_points(center_x, center_y)
+		print('no of pts found: ', len(wall_points))
+		
+		
+		for wall_point in wall_points:
+			
+			x, y = wall_point['point']
+			
+			print('going to point : ', (x, y))
+			
+			success = bot.go_to(x, y, mode='point')
+			
+			if success:
+				wall_point['visited'] = True
+				self.circular_scan()
+				
+			
 			if self.poster_found:
 				break
+		
 			
-			bot.move(angular=(0,0, 0.5))
-			bot.rate.sleep()
-		
-		return 'poster_found' if self.poster_found else 'poster_not_found'
-		
+		return 'poster_found' if self.poster_found else 'poster_not_found'		
+
+
 
 
 class FocusPoster(State):
 	def __init__(self, bot):
-		State.__init__(self, outcomes=['picture_taken', 'picture_not_taken'])
+		State.__init__(self, outcomes=['picture_taken'])
 		self.object_subscriber = rospy.Subscriber('object_detection/object/json', String, self.process_json, queue_size=1)
 		self.closest_poster_area = 45000
 		
@@ -220,7 +271,7 @@ class FocusPoster(State):
 			#~ # turn towards the goal
 			angular = (0,0,-self.object_poster_diff) 
 			#~ # Too far away from object, need to move forwards
-			linear = (0.15,0,0)
+			linear = (0.1,0,0)
 			bot.move(linear, angular)
 			
 		self.send_bot_status()
@@ -230,26 +281,25 @@ class FocusPoster(State):
 		return 'picture_taken'
 		
 		
-		
 
 ###################################################################################
 
-	
 
 if __name__ == '__main__':
 	try: 
 		rospy.init_node('Explorer', anonymous=True)
+		grid_map = OccupancyGridMap()
 		bot = TurtleBot()
-		
-		sm = StateMachine(outcomes=['success'])  # the end states of the machine
+	
+		sm = StateMachine(outcomes=['success', 'failure'])  # the end states of the machine
 		with sm:
 			
 			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
 			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
-			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'ROOM_SCAN'})
-			StateMachine.add('ROOM_SCAN', RoomScan(bot), transitions={'poster_found': 'FOCUS_ON_POSTER', 'poster_not_found': 'ROOM_SCAN'}) # change to explore room
-			StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success', 'picture_not_taken': 'ROOM_SCAN'})
-			#~ StateMachine.add('EXPLORE_ROOM', ExploreRoom(bot), transitions={'poster_found': 'FOCUS_ON_POSTER'})
+			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'EXPLORE_ROOM', 'nav_not_done': 'CSCAN'})
+			StateMachine.add('EXPLORE_ROOM', ExploreRoom(bot, grid_map), transitions={'poster_found': 'FOCUS_ON_POSTER', 'poster_not_found': 'failure'})
+			StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success'})
+			
 			
 			sm.execute()
 		

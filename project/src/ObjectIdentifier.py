@@ -175,12 +175,20 @@ class colourIdentifier():
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
+		rgb_image = cv.cvtColor(self.cv_image, cv.COLOR_BGR2RGB)
+		
 		if data['status'] == 'focus_done':
-			cv.imwrite(data['file_path'] + 'green_circle.png', self.cv_image)
+			cv.imwrite(data['file_path'] + 'green_circle.png', rgb_image)
 		elif data['status'] == 'poster_focus_done':
+			
+			print('voting results : ', cluedo_characters)
+			
 			recognized_character = max(cluedo_characters, key=cluedo_characters.get)
 			
-			cv.imwrite(data['file_path'] + recognized_character + '.png', self.cv_image)
+			with open(data['file_path'] + 'cluedo_character.txt', 'a') as the_file:
+				the_file.write('The Cluedo Character on the Poster is : ' + recognized_character)
+			
+			cv.imwrite(data['file_path'] + recognized_character + '.png', rgb_image)
 		
 		self.bot_status = data['status']
 		
@@ -210,7 +218,7 @@ class colourIdentifier():
 	def faces_found(self, gray):
 		
 		face_cascade = cv.CascadeClassifier('./src/group27/project/src/haarcascade_frontalface_default.xml')
-		faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+		faces = face_cascade.detectMultiScale(gray, 1.2, 5)
 		
 		print('no of faces found: ', len(faces))
 		
@@ -298,6 +306,8 @@ class colourIdentifier():
 									'angle_from_poster': self.find_diff(cx),
 									'faces_found': face_and_pos[0]
 								}
+								
+					print('object details : ', object_message)
 					
 					self.send_object_message(object_message)
 				
@@ -314,7 +324,7 @@ class colourIdentifier():
 			cv_image = self.cv_bridge.imgmsg_to_cv2(data, "bgr8")
 			self.cv_image = cv.cvtColor(cv_image, cv.COLOR_BGR2RGB)
 			
-			if self.bot_status == '':
+			if self.bot_status == '' or self.bot_status == 'focus_done':
 				red_mask, green_mask = self.extract_colors(cv_image)
 		
 				# Find the contours that appear within the certain colours mask using the cv2.findContours() method

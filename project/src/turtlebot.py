@@ -7,8 +7,9 @@ from geometry_msgs.msg import Point, Pose, Quaternion, Twist
 from std_msgs.msg import String
 
 import yaml
+import numpy as np
 
-
+input_points_path = './src/group27/project/example/input_points.yaml'
 
 class TurtleBot:
 	def __init__(self):
@@ -34,7 +35,7 @@ class TurtleBot:
 		
 		self.move_base.wait_for_server(rospy.Duration(5))
 		
-		with open('./src/group27/project/example/input_points.yaml', 'r') as stream:
+		with open(input_points_path, 'r') as stream:
 			try:
 				pts = yaml.safe_load(stream)
 				self.rooms = [
@@ -58,7 +59,18 @@ class TurtleBot:
 		self.velocity_publisher.publish(self.velocity)
 		
 	
-	def go_to(self, pose, quat):
+	def calculate_pos_quat(self, x, y):
+		theta = 0.1
+		pos = {'x': x, 'y' : y, 'z': 0}
+		quat = {'r1' : 0.000, 'r2' : 0.000, 'r3' : np.sin(theta/2.0), 'r4' : np.cos(theta/2.0)}
+		
+		return pos, quat
+	
+	
+	def go_to(self, pose, quat, mode=''):
+		
+		if mode == 'point':
+			pose, quat = self.calculate_pos_quat(pose, quat)
 	
 		# send a goal
 		self.goal_sent = True
@@ -90,10 +102,14 @@ class TurtleBot:
 		self.closest_room = closest_room
 		
 	def go_to_room_center(self):
-		self.go_to(self.closest_room['pos_center'], self.closest_room['quat'])
+		result = self.go_to(self.closest_room['pos_center'], self.closest_room['quat'])
+		
+		return result
 	
 	def go_to_room_enterance(self):
-		self.go_to(self.closest_room['pos_enterance'], self.closest_room['quat'])
+		result = self.go_to(self.closest_room['pos_enterance'], self.closest_room['quat'])
+		
+		return result
 		
 	
 	def shutdown(self):
