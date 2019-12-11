@@ -246,6 +246,8 @@ class ExploreRoom(State):
 	
 	
 	def process_json(self, data):
+		# get information about rectangular contours in the environment
+
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
@@ -254,6 +256,9 @@ class ExploreRoom(State):
 		
 		
 	def send_bot_status(self):
+		# send room scan status to the ObjectIdentifier node so 
+		# that it can change its computer vision techniques accordingly
+
 		status_message = {
 							'status': 'room_scan'
 		}
@@ -282,6 +287,8 @@ class ExploreRoom(State):
 	
 	
 	def execute(self, userdata):
+		# send room center to OccupancyGridMap object to get back 7 points alongst the wall
+		# navigate to those points and do a full 360 spin 
 		
 		self.send_bot_status()
 		
@@ -327,6 +334,8 @@ class FocusPoster(State):
 	
 	
 	def process_json(self, data):
+		# get information about poster like:- if faces where found, angle from its centre, its area
+
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
@@ -338,6 +347,8 @@ class FocusPoster(State):
 		
 	
 	def send_bot_status(self):
+		# send a status message so that ObjectIdentifier node can capture the image of the poster
+
 		status_message = {
 							'status': 'poster_focus_done',
 							'file_path': image_capture_path
@@ -347,11 +358,13 @@ class FocusPoster(State):
 		
 		
 	def closeness_constraint(self):
+		# its close enough to the image to stop and take a picture 
 		
 		return self.poster_rectangle_area <= self.closest_poster_area
 		
 	
 	def execute(self, userdata):
+		# move towards the centroid of the poster, turning towards it
 		
 		while self.poster_found and self.closeness_constraint():
 			#~ # turn towards the goal
