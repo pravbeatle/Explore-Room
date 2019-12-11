@@ -21,13 +21,44 @@ image_capture_path = './src/group27/project/image_capture/'
 ############################## STATE MACHINE ####################################
 
 
-class CScan(State):
+#~ class CScan(State):
+	#~ def __init__(self, bot):
+		#~ State.__init__(self, outcomes=['green_found', 'nothing_found'])
+		#~ self.object_subscriber = rospy.Subscriber('object_detection/color/json', String, self.process_json, queue_size=1)
+
+
+		#~ self.color_found = False
+
+
+	#~ def process_json(self, data):
+		#~ data = message_converter.convert_ros_message_to_dictionary(data)['data']
+		#~ data = json.loads(data)
+		
+		#~ if data['circle_found'] and data['object_color'] == 'Green':
+			#~ self.color_found = True
+
+
+	#~ def execute(self, userdata):
+		
+		#~ for i in range(300):
+			#~ if self.color_found:
+				#~ break
+			
+			#~ bot.move(angular=(0,0, 0.25))
+			#~ bot.rate.sleep()
+	
+		#~ return 'green_found' if self.color_found else 'nothing_found'
+
+
+
+class CheckRooms(State):
 	def __init__(self, bot):
 		State.__init__(self, outcomes=['green_found', 'nothing_found'])
 		self.object_subscriber = rospy.Subscriber('object_detection/color/json', String, self.process_json, queue_size=1)
-
+		self.transform_listener = tf.TransformListener()
 
 		self.color_found = False
+		self.rooms = []
 
 
 	def process_json(self, data):
@@ -36,9 +67,27 @@ class CScan(State):
 		
 		if data['circle_found'] and data['object_color'] == 'Green':
 			self.color_found = True
+			
+	
+	def dist(self, x, y):
+		
+		return math.sqrt((x - self.position[0])**2 + (y - self.position[1])**2)
+		
+	
+	def calculate_distance_from_bot(self):
+		# calculate distance from robot position to the room enterances
+		
+		self.rooms = list(bot.rooms)
+		
+		for i in range(len(self.rooms)):
+			self.rooms[i]['distance_from_bot'] = self.dist(self.rooms[i]['enterance_x'], self.rooms[i]['enterance_y'])
+		
+		self.rooms = sorted(self.rooms, key=lambda x:x['distance_from_bot'])
+		
+		print(self.rooms)
+		
 
-
-	def execute(self, userdata):
+	def circular_scan(self):
 		
 		for i in range(300):
 			if self.color_found:
@@ -46,15 +95,40 @@ class CScan(State):
 			
 			bot.move(angular=(0,0, 0.25))
 			bot.rate.sleep()
+
+
+	def execute(self, userdata):
+		
+		# go to rooms individually and do a 360 scan
+		
+		self.transform_listener.waitForTransform("/map", "/base_link", rospy.Time(0), rospy.Duration(4.0))
+		
+		(self.position, self.orientation) = self.transform_listener.lookupTransform("/map", "/base_link", rospy.Time(0))
+		
+		print('position of bot : ', self.position)
+		
+		self.calculate_distance_from_bot()
+		
+		for i in range(len(self.rooms)):
+			
+			success = bot.go_to(self.rooms[i]['enterance_x'], self.rooms[i]['enterance_y'], mode='point')
+			
+			if success:
+				self.circular_scan()
+				
+			if self.color_found:
+				break
+		
 	
 		return 'green_found' if self.color_found else 'nothing_found'
+
 
 
 class Focus(State):
 	def __init__(self, bot):
 		State.__init__(self, outcomes=['focus_done'])
 		self.object_subscriber = rospy.Subscriber('object_detection/color/json', String, self.process_json, queue_size=1)
-		self.closest_radius = 45
+		self.closest_radius = 80
 
 	
 	
@@ -62,6 +136,7 @@ class Focus(State):
 		data = message_converter.convert_ros_message_to_dictionary(data)['data']
 		data = json.loads(data)
 		
+		print('radius of the green contour : ', data['radius'])
 		self.object_radius = data['radius']
 		self.object_diff = data['angle_from_centroid']
 		
@@ -81,7 +156,7 @@ class Focus(State):
 			# turn towards the goal
 			angular = (0,0,-self.object_diff) 
 			# Too far away from object, need to move forwards
-			linear = (0.2,0,0)
+			linear = (0.1,0,0)
 			bot.move(linear, angular)
 		
 		self.send_bot_status()
@@ -132,7 +207,9 @@ class NavRoom(State):
 	
 	def execute(self, userdata):	
 				
-		(self.position, self.orientation) = self.transform_listener.lookupTransform("/base_link", "/map", rospy.Time(0))
+		self.transform_listener.waitForTransform("/map", "/base_link", rospy.Time(0), rospy.Duration(4.0))
+		
+		(self.position, self.orientation) = self.transform_listener.lookupTransform("/map", "/base_link", rospy.Time(0))
 		
 		print('position of the bot : ', self.position)
 		
@@ -290,13 +367,16 @@ if __name__ == '__main__':
 		rospy.init_node('Explorer', anonymous=True)
 		grid_map = OccupancyGridMap()
 		bot = TurtleBot()
-	
+		
+		sleep(1)
+			
 		sm = StateMachine(outcomes=['success', 'failure'])  # the end states of the machine
 		with sm:
 			
-			StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CSCAN'})
+			#~ StateMachine.add('CSCAN', CScan(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CHECK_ROOMS'})
+			StateMachine.add('CHECK_ROOMS', CheckRooms(bot), transitions={'green_found': 'FOCUS', 'nothing_found': 'CHECK_ROOMS'})
 			StateMachine.add('FOCUS', Focus(bot), transitions={'focus_done': 'NAV_TO_ROOM'})
-			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'EXPLORE_ROOM', 'nav_not_done': 'CSCAN'})
+			StateMachine.add('NAV_TO_ROOM', NavRoom(bot), transitions={'nav_done': 'EXPLORE_ROOM', 'nav_not_done': 'CHECK_ROOMS'})
 			StateMachine.add('EXPLORE_ROOM', ExploreRoom(bot, grid_map), transitions={'poster_found': 'FOCUS_ON_POSTER', 'poster_not_found': 'failure'})
 			StateMachine.add('FOCUS_ON_POSTER', FocusPoster(bot), transitions={'picture_taken': 'success'})
 			

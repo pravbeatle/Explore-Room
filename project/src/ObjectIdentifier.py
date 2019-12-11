@@ -129,7 +129,7 @@ class colourIdentifier():
 			diff = self.find_diff(cx)
 			
 			
-			if radius > 5:
+			if radius > 20:
 				#~ center = (int(x), int(y))
 				#~ # draw a circle on the contour you're identifying
 				#~ cv.circle(self.image, center, int(radius), (255, 255, 255), 1)
